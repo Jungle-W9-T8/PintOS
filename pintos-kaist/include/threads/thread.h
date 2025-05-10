@@ -91,7 +91,7 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
-
+	
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
@@ -107,6 +107,8 @@ struct thread {
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
+
+	int64_t wakeup_tick;
 };
 
 /* If false (default), use round-robin scheduler.
@@ -122,12 +124,14 @@ void thread_print_stats (void);
 
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
-
+bool cmp_wakeTick(struct list_elem *a, struct list_elem *b, void *aux UNUSED);
 void thread_block (void);
 void thread_unblock (struct thread *);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);
+void thread_sleep(int64_t ticks);
+void thread_wakeUp(int64_t curTick);
 const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;

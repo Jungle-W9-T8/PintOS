@@ -28,6 +28,7 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+static struct list sleep_list;
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -54,6 +55,8 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
 
+int64_t globalTicks = NULL;
+
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
@@ -62,6 +65,7 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
+
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -106,8 +110,11 @@ thread_init (void) {
 	lgdt (&gdt_ds);
 
 	/* Init the globla thread context */
+	globalTicks = 0;
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+
+	list_init (&sleep_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -240,7 +247,8 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	//list_push_back (&ready_list, &t->elem);
+	list_insert_ordered(&ready_list, &t->elem, cmp_wakeTick, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -305,6 +313,68 @@ thread_yield (void) {
 	if (curr != idle_thread)
 		list_push_back (&ready_list, &curr->elem);
 	do_schedule (THREAD_READY);
+	intr_set_level (old_level);
+}
+
+bool cmp_wakeTick(struct list_elem *a, struct list_elem *b, void *aux UNUSED)
+{
+	struct thread *threadA = list_entry(a, struct thread, elem);
+	struct thread *threadB = list_entry(b, struct thread, elem);
+	return threadA->wakeup_tick < threadB->wakeup_tick;
+}
+
+void thread_wakeUp(int64_t curTick)
+{
+	if(globalTicks == NULL) return;
+	
+
+	// curTick은 OS 기반으로 부팅 된 시간을 확인해옴
+	// globalTicks는 현재 쓰레드 중 제일 최소 시간을 말함. 그러니까 globalTicks를 지났다는 시점에서 순회를 시작함. 사실상 자원 절약의 핵심 코드
+	if(curTick >= globalTicks)
+	{
+		struct thread *curr = thread_current ();
+		struct list_elem *e;
+		int64_t nextGlobalTick = NULL;
+	
+		while(!list_empty(&sleep_list))
+		{
+			e = list_begin(&sleep_list);
+			
+			struct thread *tmp = list_entry(e, struct thread, elem);
+
+			if(tmp->wakeup_tick <= curTick)
+			{
+				list_remove(e);
+				thread_unblock(tmp);
+			}
+			else break;
+		}
+
+		if(list_empty(&sleep_list))
+			globalTicks = NULL;
+		else
+			globalTicks = list_entry(e, struct thread, elem)->wakeup_tick;
+
+	}
+}
+
+void thread_sleep(int64_t ticks)
+{
+	struct thread *curr = thread_current ();
+	curr->wakeup_tick = ticks;		
+
+	enum intr_level old_level;
+	old_level = intr_disable ();
+
+	//if(curr != idle_thread)
+	
+		if(globalTicks == NULL || globalTicks > ticks)
+			globalTicks = ticks;
+		list_insert_ordered(&sleep_list, &curr->elem, cmp_wakeTick, NULL);
+
+		thread_block();
+	
+
 	intr_set_level (old_level);
 }
 
