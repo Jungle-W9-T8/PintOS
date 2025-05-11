@@ -28,6 +28,7 @@ static intr_handler_func timer_interrupt;
 static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
+void update_min_ticks(list);
 
 /* Sets up the 8254 Programmable Interval Timer (PIT) to
    interrupt PIT_FREQ times per second, and registers the
@@ -90,11 +91,16 @@ timer_elapsed (int64_t then) {
 /* Suspends execution for approximately TICKS timer ticks. */
 void
 timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks ();
+	int64_t start = timer_ticks (); // 현재 시각
 
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	// while (timer_elapsed (start) < ticks)
+	// 	thread_yield (); // 현재 스레드를 READY로 바꾸고 다음 스레드 찾아서 실행
+
+	// start 시점으로부터 흐른 시간보다 ticks가 작으면 현재 스레드 슬립
+	if (timer_elapsed(start) < ticks) { // advanced todo: start 고쳐줘야 함
+		thread_sleep(start+ticks);
+	}
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -121,11 +127,16 @@ timer_print_stats (void) {
 	printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
 
-/* Timer interrupt handler. */
+/* Timer interrupt handler. 
+   [추가]
+	sleep list에서 global tick 이상의 tick을 가진 스레드들을 깨워서 ready list에 넣어준다. 
+	+ global tick 업데이트!
+*/
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+	thread_wakeup(ticks);
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
@@ -184,3 +195,19 @@ real_time_sleep (int64_t num, int32_t denom) {
 		busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000));
 	}
 }
+
+// bool wakeup_ticks_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+//     struct thread *t1 = list_entry(a, struct thread, elem);
+//     struct thread *t2 = list_entry(b, struct thread, elem);
+
+//     return t1->wakeup_tick < t2->wakeup_tick;
+// }
+
+// void update_min_tick(struct list *list) 
+// {
+// 	struct list_elem *min_elem = list_min (list, wakeup_ticks_less, NULL);
+
+// 	if (min_elem != list_end(list)) {
+// 		struct thread *min_thread = list_entry(min_elem, struct thread, elem);
+// 	}
+// }
