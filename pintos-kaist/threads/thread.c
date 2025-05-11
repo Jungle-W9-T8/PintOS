@@ -28,6 +28,8 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+static struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -44,6 +46,11 @@ static struct list destruction_req;
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
+
+/* sleep list에서 가장 작은 wakeup_tick을 추적하는 전역변수 
+   즉, 가장 빨리 깨어나야 할 스레드의 wakeup_tick
+*/
+int64_t min_tick = INT64_MAX;
 
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
@@ -62,6 +69,7 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
+bool compare_tick_and_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -109,6 +117,7 @@ thread_init (void) {
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
+	list_init (&sleep_list);
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -299,13 +308,62 @@ thread_yield (void) {
 	struct thread *curr = thread_current ();
 	enum intr_level old_level;
 
-	ASSERT (!intr_context ());
+	ASSERT (!intr_context ()); // 현재 코드가 인터럽트 컨텍스트에서 실행 중이 아님을 보장
 
-	old_level = intr_disable ();
-	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
-	do_schedule (THREAD_READY);
-	intr_set_level (old_level);
+	old_level = intr_disable (); // 현재 스레드를 인터럽트 OFF 상태로 만들고, 함수 호출 직전의 인터럽트 상태를 반환
+	if (curr != idle_thread) // 현재 스레드가 idle_thread가 아닌 경우에만 
+		list_push_back (&ready_list, &curr->elem); // ready_list의 맨 뒤에 현재 스레드 삽입
+	do_schedule (THREAD_READY); // 현재 스레드를 READY로 바꾸고 실행할 다음 스레드를 찾아 해당 스레드로 문맥 전환
+	intr_set_level (old_level); // 함수 호출 이전 인터럽트 상태로 복구 
+}
+
+/* 현재 스레드가 idle thread가 아니라면 BLOCKED
+   local ticks를 wakeup tick으로 저장 + 필요시 global tick 갱신
+   schedule 호출
+   thread list를 조작할 때는 interrupt를 허용할지 말 것!
+ */
+void 
+thread_sleep(int64_t ticks) 
+{
+	struct thread *curr = thread_current ();
+	enum intr_level old_level;
+
+	ASSERT (!intr_context ()); // 현재 코드가 인터럽트 컨텍스트에서 실행 중이 아님을 보장
+
+	old_level = intr_disable (); // 현재 스레드를 인터럽트 OFF 상태로 만들고, 함수 호출 직전의 인터럽트 상태를 반환
+	curr->wakeup_tick = ticks; // 현재 스레드가 깨어나야할 시간 갱신
+	if (min_tick > ticks || min_tick == NULL) { // 현재 스레드의 wakeup_tick이 sleep리스트에서 가장 작은 wakeup_tick 보다 더 빠르거나 sleep list에 아무 스레드도 없었다면
+		min_tick = ticks; // 현재 스레드의 wakeup_tick으로 min_tick 갱신
+	} 
+	list_insert_ordered (&sleep_list, &curr->elem, compare_tick_and_priority, NULL); // 1순위 wakeup_tick, 2순위 priority 순으로 오름차순 정렬 유지하도록 insert
+	thread_block (); // 현재 스레드를 BLOCKED로 바꾸고 실행할 다음 스레드를 찾아 해당 스레드로 문맥 전환
+	intr_set_level (old_level); // 함수 호출 이전 인터럽트 상태로 복구
+}
+
+/*
+   기준 시간과 비교해서 wakeup ticks가 크거나 같은 스레드들을 모두 깨운다.
+   : READY 상태로 만들어서 ready_list에 넣어주기 
+*/
+void 
+thread_wakeup(int64_t os_ticks)
+{
+	if (min_tick == NULL) return;
+	
+	if (min_tick <= os_ticks) {
+		struct list_elem *e; 
+		while (!list_empty(&sleep_list)) {
+            e = list_begin(&sleep_list);
+            struct thread *curr = list_entry(e, struct thread, elem);
+
+            if (curr->wakeup_tick <= os_ticks) {
+                list_remove(e); // e를 삭제하고 다음 list_elem으로 이동함
+                thread_unblock(curr); // 현재 스레드를 UNBLOCK
+            } else { // `wakeup_tick`이 현재 os_ticks보다 큰 첫 번째 요소를 만남 -> 더 이상 순회할 필요 없음
+				min_tick = curr->wakeup_tick; // min_tick 갱신
+                break;
+            }
+		}
+	}
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
@@ -527,15 +585,15 @@ thread_launch (struct thread *th) {
  * It's not safe to call printf() in the schedule(). */
 static void
 do_schedule(int status) {
-	ASSERT (intr_get_level () == INTR_OFF);
-	ASSERT (thread_current()->status == THREAD_RUNNING);
-	while (!list_empty (&destruction_req)) {
-		struct thread *victim =
-			list_entry (list_pop_front (&destruction_req), struct thread, elem);
-		palloc_free_page(victim);
+	ASSERT (intr_get_level () == INTR_OFF); // 인터럽트 OFF 상태인지 확인
+	ASSERT (thread_current()->status == THREAD_RUNNING); // 현재 스레드가 실행중인지 확인
+	while (!list_empty (&destruction_req)) { 
+		struct thread *victim = // 교체될 스레드
+			list_entry (list_pop_front (&destruction_req), struct thread, elem); 
+		palloc_free_page(victim); // 교체될 스레드 메모리 해제
 	}
-	thread_current ()->status = status;
-	schedule ();
+	thread_current ()->status = status; 
+	schedule (); // 문맥 전환
 }
 
 static void
@@ -564,7 +622,7 @@ schedule (void) {
 		   We just queuing the page free reqeust here because the page is
 		   currently used by the stack.
 		   The real destruction logic will be called at the beginning of the
-		   schedule(). */
+		   schedule(). */ 
 		if (curr && curr->status == THREAD_DYING && curr != initial_thread) {
 			ASSERT (curr != next);
 			list_push_back (&destruction_req, &curr->elem);
@@ -587,4 +645,13 @@ allocate_tid (void) {
 	lock_release (&tid_lock);
 
 	return tid;
+}
+
+bool compare_tick_and_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+    struct thread *t1 = list_entry(a, struct thread, elem);
+    struct thread *t2 = list_entry(b, struct thread, elem);
+	if (t1->wakeup_tick != t2->wakeup_tick)
+		return t1->wakeup_tick < t2->wakeup_tick;
+	
+	return t1->priority > t2->priority;
 }
