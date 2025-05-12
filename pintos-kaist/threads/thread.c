@@ -18,26 +18,6 @@
 #include "userprog/process.h"
 #endif
 
-<<<<<<< HEAD
-/* Random value for struct thread's `magic' member.
-   Used to detect stack overflow.  See the big comment at the top
-   of thread.h for details. */
-#define THREAD_MAGIC 0xcd6abf4b
-
-/* Random value for basic thread
-   Do not modify this value. */
-#define THREAD_BASIC 0xd42df210
-
-/* List of processes in THREAD_READY state, that is, processes
-   that are ready to run but not actually running. */
-static struct list ready_list;
-
-static struct list sleep_list;
-
-/* Idle thread. */
-static struct thread *idle_thread;
-=======
->>>>>>> 1169a27b92fd484cd20763d133b6c020d49c00e3
 
 //=== [2] Thread Constants ===//
 #define THREAD_MAGIC 0xcd6abf4b   // Used to detect stack overflow
@@ -55,19 +35,8 @@ static struct list sleep_list;         // BLOCKED 상태 큐 (알람 용도)
 static struct list wait_list;		   // ❓
 static struct list destruction_req;    // 제거 대기 중인 스레드 리스트
 
-<<<<<<< HEAD
-/* sleep list에서 가장 작은 wakeup_tick을 추적하는 전역변수 
-   즉, 가장 빨리 깨어나야 할 스레드의 wakeup_tick
-*/
-int64_t min_tick = INT64_MAX;
-
-/* Scheduling. */
-#define TIME_SLICE 4            /* # of timer ticks to give each thread. */
-static unsigned thread_ticks;   /* # of timer ticks since last yield. */
-=======
 static struct thread *idle_thread;     // idle 상태의 스레드 포인터
 static struct thread *initial_thread;  // main()을 실행하는 최초 스레드 포인터
->>>>>>> 1169a27b92fd484cd20763d133b6c020d49c00e3
 
 static int64_t awake_closest_tick;     // 다음으로 깨워야 할 tick = 가장 빠른 wakeup tick 저장
 static unsigned thread_ticks;          // 최근 타임슬라이스 틱 수 = 마지막 yield 이후의 ticks
@@ -77,18 +46,8 @@ static long long idle_ticks;		   // ❓
 static long long kernel_ticks;		   // ❓
 static long long user_ticks;		   // ❓
 
-<<<<<<< HEAD
-static void idle (void *aux UNUSED);
-static struct thread *next_thread_to_run (void);
-static void init_thread (struct thread *, const char *name, int priority);
-static void do_schedule(int status);
-static void schedule (void);
-static tid_t allocate_tid (void);
-bool compare_tick_and_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
-=======
 /* tid 할당용 락 */
 static struct lock tid_lock;		   // TID 할당용 락
->>>>>>> 1169a27b92fd484cd20763d133b6c020d49c00e3
 
 /* 스케줄러 설정 */
 bool thread_mlfqs;					   // MLFQ 스케줄러 사용 여부
@@ -152,21 +111,12 @@ thread_init (void) {
 	};
 	lgdt (&gdt_ds);                           // GDT 레지스터에 설정값 로드
 
-<<<<<<< HEAD
-	/* Init the globla thread context */
-	lock_init (&tid_lock);
-	list_init (&ready_list);
-	list_init (&destruction_req);
-	list_init (&sleep_list);
-=======
 	/* Init the global thread context */
 	lock_init (&tid_lock);                   // TID 할당을 위한 락 초기화
 	list_init (&ready_list);                 // 준비 상태 스레드 리스트 초기화
 	list_init (&sleep_list);                 // ⏰ sleep 상태 스레드 리스트 초기화
 	list_init (&wait_list);					 // ❓
-	// list_init (&all_list);                // (사용하지 않음) 전체 스레드 리스트
 	list_init (&destruction_req);            // 제거 요청 대기 스레드 리스트 초기화
->>>>>>> 1169a27b92fd484cd20763d133b6c020d49c00e3
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();      // 현재 실행 중인 스레드를 thread 구조체로 변환
@@ -561,67 +511,6 @@ thread_exit (void) {
  *************************************************************/
 void
 thread_yield (void) {
-<<<<<<< HEAD
-	struct thread *curr = thread_current ();
-	enum intr_level old_level;
-
-	ASSERT (!intr_context ()); // 현재 코드가 인터럽트 컨텍스트에서 실행 중이 아님을 보장
-
-	old_level = intr_disable (); // 현재 스레드를 인터럽트 OFF 상태로 만들고, 함수 호출 직전의 인터럽트 상태를 반환
-	if (curr != idle_thread) // 현재 스레드가 idle_thread가 아닌 경우에만 
-		list_push_back (&ready_list, &curr->elem); // ready_list의 맨 뒤에 현재 스레드 삽입
-	do_schedule (THREAD_READY); // 현재 스레드를 READY로 바꾸고 실행할 다음 스레드를 찾아 해당 스레드로 문맥 전환
-	intr_set_level (old_level); // 함수 호출 이전 인터럽트 상태로 복구 
-}
-
-/* 현재 스레드가 idle thread가 아니라면 BLOCKED
-   local ticks를 wakeup tick으로 저장 + 필요시 global tick 갱신
-   schedule 호출
-   thread list를 조작할 때는 interrupt를 허용할지 말 것!
- */
-void 
-thread_sleep(int64_t ticks) 
-{
-	struct thread *curr = thread_current ();
-	enum intr_level old_level;
-
-	ASSERT (!intr_context ()); // 현재 코드가 인터럽트 컨텍스트에서 실행 중이 아님을 보장
-
-	old_level = intr_disable (); // 현재 스레드를 인터럽트 OFF 상태로 만들고, 함수 호출 직전의 인터럽트 상태를 반환
-	curr->wakeup_tick = ticks; // 현재 스레드가 깨어나야할 시간 갱신
-	if (min_tick > ticks || min_tick == NULL) { // 현재 스레드의 wakeup_tick이 sleep리스트에서 가장 작은 wakeup_tick 보다 더 빠르거나 sleep list에 아무 스레드도 없었다면
-		min_tick = ticks; // 현재 스레드의 wakeup_tick으로 min_tick 갱신
-	} 
-	list_insert_ordered (&sleep_list, &curr->elem, compare_tick_and_priority, NULL); // 1순위 wakeup_tick, 2순위 priority 순으로 오름차순 정렬 유지하도록 insert
-	thread_block (); // 현재 스레드를 BLOCKED로 바꾸고 실행할 다음 스레드를 찾아 해당 스레드로 문맥 전환
-	intr_set_level (old_level); // 함수 호출 이전 인터럽트 상태로 복구
-}
-
-/*
-   기준 시간과 비교해서 wakeup ticks가 크거나 같은 스레드들을 모두 깨운다.
-   : READY 상태로 만들어서 ready_list에 넣어주기 
-*/
-void 
-thread_wakeup(int64_t os_ticks)
-{
-	if (min_tick == NULL) return;
-	
-	if (min_tick <= os_ticks) {
-		struct list_elem *e; 
-		while (!list_empty(&sleep_list)) {
-            e = list_begin(&sleep_list);
-            struct thread *curr = list_entry(e, struct thread, elem);
-
-            if (curr->wakeup_tick <= os_ticks) {
-                list_remove(e); // e를 삭제하고 다음 list_elem으로 이동함
-                thread_unblock(curr); // 현재 스레드를 UNBLOCK
-            } else { // `wakeup_tick`이 현재 os_ticks보다 큰 첫 번째 요소를 만남 -> 더 이상 순회할 필요 없음
-				min_tick = curr->wakeup_tick; // min_tick 갱신
-                break;
-            }
-		}
-	}
-=======
 	struct thread *cur = thread_current ();		// 현재 실행중인 스레드 구조체 반환
 	enum intr_level old_level;					// 인터럽트 상태 저장용 변수
 
@@ -654,7 +543,6 @@ cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNU
 	if (ta->priority == tb->priority)				 // 우선순위가 같은 경우 (tie-breaker)
         return ta->wakeup_ticks < tb->wakeup_ticks;  // wakeup_thicks가 빠른 스레드를 우선 배치 (FIFO)
 	return ta->priority > tb->priority;				 // 우선순위가 높은 (값이 큰) 스레드를 먼저 배치
->>>>>>> 1169a27b92fd484cd20763d133b6c020d49c00e3
 }
 
 /*************************************************************
@@ -764,7 +652,13 @@ kernel_thread (thread_func *function, void *aux) {
 
 
 /* Does basic initialization of T as a blocked thread named
-   NAME. */
+   NAME. 
+   
+   ✅ TODO: priority donation을 위해 필요한 필드 초기화
+     1. donations 리스트 초기화 - 우선순위 기부 내역을 관리하기 위한 리스트
+     2. wait_on_lock 초기화 - 대기 중인 락의 주소를 추적하기 위한 포인터
+     3. base_priority 초기화 - 원래 우선순위를 저장하는 멤버 변수
+   */
 static void
 init_thread (struct thread *t, const char *name, int priority) {
 	ASSERT (t != NULL);
@@ -938,26 +832,11 @@ schedule (void)
 #ifdef USERPROG
 	process_activate (next);                        // 사용자 프로그램이면 주소 공간 교체
 #endif
-<<<<<<< HEAD
-
-	if (curr != next) {
-		/* If the thread we switched from is dying, destroy its struct
-		   thread. This must happen late so that thread_exit() doesn't
-		   pull out the rug under itself.
-		   We just queuing the page free reqeust here because the page is
-		   currently used by the stack.
-		   The real destruction logic will be called at the beginning of the
-		   schedule(). */ 
-		if (curr && curr->status == THREAD_DYING && curr != initial_thread) {
-			ASSERT (curr != next);
-			list_push_back (&destruction_req, &curr->elem);
-=======
 	if (cur != next) {
 		// 현재 스레드가 죽은 상태라면, 나중에 메모리 해제를 위해 큐에 넣음
 		if (cur && cur->status == THREAD_DYING && cur != initial_thread) {
 			ASSERT (cur != next);                  // dying 스레드는 당연히 next가 될 수 없음
 			list_push_back (&destruction_req, &cur->elem); // 제거 요청 리스트에 추가
->>>>>>> 1169a27b92fd484cd20763d133b6c020d49c00e3
 		}
 		thread_launch (next);						// 실제 문맥 전환 수행 (레지스터/스택 등 전환)
 	}
@@ -976,17 +855,6 @@ allocate_tid (void)
 
 	return tid;
 }
-
-<<<<<<< HEAD
-bool compare_tick_and_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
-    struct thread *t1 = list_entry(a, struct thread, elem);
-    struct thread *t2 = list_entry(b, struct thread, elem);
-	if (t1->wakeup_tick != t2->wakeup_tick)
-		return t1->wakeup_tick < t2->wakeup_tick;
-	
-	return t1->priority > t2->priority;
-}
-=======
 
 // /* ------------------ 디버깅용 리스트 출력 함수 ------------------ */
 // static void
@@ -1007,4 +875,3 @@ bool compare_tick_and_priority(const struct list_elem *a, const struct list_elem
 //   }
 //   printf("\n");
 // }
->>>>>>> 1169a27b92fd484cd20763d133b6c020d49c00e3

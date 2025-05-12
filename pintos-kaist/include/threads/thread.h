@@ -92,6 +92,9 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 	int64_t wakeup_ticks;				// 일어날 시각 추가
+	struct list donations;              /* 우선순위 donations를 추적하기 위한 리스트 */
+	struct lock *wait_on_lock;          /* 대기 중인 락 */
+	int base_priority;                  /* 기부 이전 우선순위 */
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
@@ -108,8 +111,6 @@ struct thread {
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
-
-	int64_t wakeup_tick;               /* 깨어나기까지 남은 시간 */ 
 };
 
 /* If false (default), use round-robin scheduler.
