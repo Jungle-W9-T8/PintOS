@@ -31,6 +31,36 @@
    elements allows us to do a little bit of checking on some
    operations, which can be valuable.) */
 
+/******************************************************************************
+ * Pintos Doubly-Linked List Utility (lib/kernel/list.c)
+ * 
+ * 🔧 리스트 초기화 및 기본 구조
+ * - list_init(): 리스트 헤더(head)와 꼬리(tail) 노드를 연결해 빈 리스트 초기화
+ * - 리스트 구조는 head <-> 요소들 <-> tail 형태로, 특수 케이스를 줄임
+ *
+ * 🧭 순회 관련 함수
+ * - list_begin(), list_end(): 리스트의 시작/끝 반환
+ * - list_rbegin(), list_rend(): 역방향 순회 시작/끝 반환
+ * - list_next(), list_prev(): 다음/이전 요소 접근
+ *
+ * 📥 삽입 관련 함수
+ * - list_insert(): 특정 위치 앞에 요소 삽입
+ * - list_push_front(), list_push_back(): 리스트 앞/뒤에 삽입
+ * - list_insert_ordered(): 정렬된 리스트에 정렬 기준에 맞춰 삽입
+ * - list_splice(): 요소 구간을 잘라서 다른 위치에 삽입
+ *
+ * 🧹 삭제 관련 함수
+ * - list_remove(): 특정 요소 제거 및 다음 요소 반환
+ * - list_pop_front(), list_pop_back(): 앞/뒤 요소 제거 후 반환
+ *
+ * 🔍 검색/정렬/유틸
+ * - list_empty(), list_size(): 비어있는지 여부 및 크기 반환
+ * - list_sort(): 병합 정렬 기반 정렬 수행 (O(n log n))
+ * - list_unique(): 인접 중복 요소 제거 (선행 요소만 유지)
+ * - list_max(), list_min(): 비교 함수 기반 최대/최소 요소 반환
+ * - list_reverse(): 리스트 순서를 역전
+ ******************************************************************************/
+
 static bool is_sorted (struct list_elem *a, struct list_elem *b,
 		list_less_func *less, void *aux) UNUSED;
 
@@ -150,18 +180,35 @@ list_tail (struct list *list) {
 	return &list->tail;
 }
 
-/* Inserts ELEM just before BEFORE, which may be either an
-   interior element or a tail.  The latter case is equivalent to
-   list_push_back(). */
+/*************************************************************
+ * list_insert - 리스트에서 주어진 위치(before) 앞에 elem을 삽입
+ *
+ * 기능:
+ * - before가 리스트 내부 요소이든, 리스트의 끝(tail)이든 상관없이
+ *   해당 위치 바로 앞에 elem을 삽입함
+ * - tail 앞에 삽입하는 경우는 list_push_back()과 동일한 효과
+ *
+ * 조건:
+ * - before는 리스트 내부 요소 또는 tail이어야 함
+ * - elem은 유효한 포인터이어야 함
+ *
+ * 동작:
+ *   [prev] <-> [elem] <-> [before]
+ *
+ * 예:
+ *   list_insert(list_end(&mylist), elem);
+ *   → 리스트의 끝에 elem을 삽입 (push_back과 동일)
+ *************************************************************/
 void
-list_insert (struct list_elem *before, struct list_elem *elem) {
-	ASSERT (is_interior (before) || is_tail (before));
-	ASSERT (elem != NULL);
+list_insert (struct list_elem *before, struct list_elem *elem) 
+{
+	ASSERT (is_interior (before) || is_tail (before)); // before가 유효한 내부 요소 또는 tail인지 확인
+	ASSERT (elem != NULL);                             // 삽입할 요소가 NULL이 아닌지 확인
 
-	elem->prev = before->prev;
-	elem->next = before;
-	before->prev->next = elem;
-	before->prev = elem;
+	elem->prev = before->prev;         // elem의 prev를 before의 이전 요소로 설정
+	elem->next = before;               // elem의 next는 before
+	before->prev->next = elem;         // before의 이전 요소가 now elem을 가리키게 함
+	before->prev = elem;               // before의 prev는 이제 elem
 }
 
 /* Removes elements FIRST though LAST (exclusive) from their
@@ -196,10 +243,23 @@ list_push_front (struct list *list, struct list_elem *elem) {
 	list_insert (list_begin (list), elem);
 }
 
-/* Inserts ELEM at the end of LIST, so that it becomes the
-   back in LIST. */
+/*************************************************************
+ * list_push_back - 리스트의 끝에 새로운 요소를 삽입
+ *
+ * 기능:
+ * - 주어진 리스트의 마지막 위치(list_end) 앞에 elem을 삽입
+ * - 내부적으로 list_insert() 함수를 호출함
+ *
+ * 사용 예:
+ * - 큐처럼 동작하는 자료구조에서 뒤쪽 삽입 시 유용
+ *
+ * 주의:
+ * - elem은 이미 리스트에 포함되어 있지 않아야 함 (중복 삽입 금지)
+ *************************************************************/
 void
-list_push_back (struct list *list, struct list_elem *elem) {
+list_push_back (struct list *list, struct list_elem *elem) 
+{	
+	// 리스트의 끝(end) 앞 위치에 elem을 삽입하여 가장 뒤 요소가 되도록 함
 	list_insert (list_end (list), elem);
 }
 
@@ -412,9 +472,26 @@ list_sort (struct list *list, list_less_func *less, void *aux) {
 	ASSERT (is_sorted (list_begin (list), list_end (list), less, aux));
 }
 
-/* Inserts ELEM in the proper position in LIST, which must be
-   sorted according to LESS given auxiliary data AUX.
-   Runs in O(n) average case in the number of elements in LIST. */
+/*************************************************************
+ * list_insert_ordered - 정렬된 리스트에 elem을 정렬 기준에 따라 삽입
+ *
+ * 기능:
+ * - 이미 정렬된 리스트(LIST)에 대해 비교 함수(LESS)를 기준으로
+ *   새로운 요소(ELEM)를 알맞은 위치에 삽입함
+ * - 리스트가 오름차순 정렬되어 있다고 가정함
+ *
+ * 매개변수:
+ * - list: 정렬된 상태의 리스트
+ * - elem: 삽입할 리스트 요소
+ * - less: 정렬 기준을 정의하는 비교 함수
+ * - aux: 비교 함수에 전달할 부가 데이터 (사용하지 않아도 됨)
+ *
+ ~* 시간복잡도:
+ * - 평균 O(n): 순차 탐색을 통해 삽입 위치를 찾기 때문
+ *
+ * 사용 예:
+ * - 우선순위 큐에서 스레드를 정렬된 순서로 삽입할 때 유용
+ *************************************************************/
 void
 list_insert_ordered (struct list *list, struct list_elem *elem,
 		list_less_func *less, void *aux) {
@@ -425,9 +502,9 @@ list_insert_ordered (struct list *list, struct list_elem *elem,
 	ASSERT (less != NULL);
 
 	for (e = list_begin (list); e != list_end (list); e = list_next (e))
-		if (less (elem, e, aux))
+		if (less (elem, e, aux)) 	// elem이 e보다 작으면 그 앞에 삽입할 위치 찾음
 			break;
-	return list_insert (e, elem);
+	return list_insert (e, elem); 	// 찾은 위치 앞에 elem 삽입
 }
 
 /* Iterates through LIST and removes all but the first in each

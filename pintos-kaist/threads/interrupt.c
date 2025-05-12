@@ -110,24 +110,56 @@ static void pic_end_of_interrupt (int irq);
 /* Interrupt handlers. */
 void intr_handler (struct intr_frame *args);
 
-/* Returns the current interrupt status. */
+/*************************************************************
+ * intr_get_level - 현재 인터럽트 활성화 여부를 반환
+ *
+ * 기능:
+ * - CPU의 EFLAGS 레지스터에서 IF(Interrupt Flag) 비트를 확인하여
+ *   현재 인터럽트가 활성화되어 있는지 여부를 판별
+ *
+ * 반환:
+ * - INTR_ON  → 인터럽트 활성화 상태
+ * - INTR_OFF → 인터럽트 비활성화 상태
+ *
+ * 참고:
+ * - IF (Interrupt Flag) 비트는 EFLAGS의 9번째 비트 (bit 9)
+ * - 관련 명령어: PUSHFQ / POPQ
+ *     - PUSHFQ: EFLAGS를 스택에 저장
+ *     - POPQ  : 스택에서 꺼내 flags 변수에 저장
+ * - [IA32-v2b] "PUSHF", "POP"
+ * - [IA32-v3a] 5.8.1 "Masking Maskable Hardware Interrupts"
+ *************************************************************/
 enum intr_level
 intr_get_level (void) {
 	uint64_t flags;
 
-	/* Push the flags register on the processor stack, then pop the
-	   value off the stack into `flags'.  See [IA32-v2b] "PUSHF"
-	   and "POP" and [IA32-v3a] 5.8.1 "Masking Maskable Hardware
-	   Interrupts". */
+	// EFLAGS 레지스터 값을 flags 변수에 저장
 	asm volatile ("pushfq; popq %0" : "=g" (flags));
 
+	// IF(Interrupt Flag)가 설정되어 있는지 확인
 	return flags & FLAG_IF ? INTR_ON : INTR_OFF;
 }
 
-/* Enables or disables interrupts as specified by LEVEL and
-   returns the previous interrupt status. */
+/*************************************************************
+ * intr_set_level - 인터럽트 상태를 주어진 level(INTR_ON/INTR_OFF)로 설정
+ *
+ * 기능:
+ * - level이 INTR_ON이면 인터럽트를 활성화
+ * - level이 INTR_OFF이면 인터럽트를 비활성화
+ * - 이전 인터럽트 상태를 반환하여 이후 복원할 수 있도록 함
+ *
+ * 반환:
+ * - 변경 전 인터럽트 상태 (INTR_ON 또는 INTR_OFF)
+ *
+ * 사용 예:
+ *   enum intr_level old = intr_set_level(INTR_OFF);
+ *   ... // 크리티컬 섹션
+ *   intr_set_level(old);
+ *************************************************************/
 enum intr_level
-intr_set_level (enum intr_level level) {
+intr_set_level (enum intr_level level) 
+{
+	// 요청된 level에 따라 인터럽트를 켜거나 끄고, 이전 상태를 반환
 	return level == INTR_ON ? intr_enable () : intr_disable ();
 }
 
@@ -146,17 +178,32 @@ intr_enable (void) {
 	return old_level;
 }
 
-/* Disables interrupts and returns the previous interrupt status. */
+/*************************************************************
+ * intr_disable - 인터럽트를 비활성화하고 이전 인터럽트 상태를 반환
+ *
+ * 기능:
+ * - 현재 인터럽트 상태를 저장
+ * - 'cli' 명령어를 사용해 인터럽트 비트(IF)를 클리어함
+ *   → 마스크 가능한 하드웨어 인터럽트 차단 (IF 1 → 0으로 전환)
+ * - 이후 동기화 임계 구역에서 race condition 방지에 사용됨
+ *
+ * 반환:
+ * - 인터럽트를 비활성화하기 전의 상태 (enum intr_level)
+ *
+ * 참고:
+ * - [IA32-v2b] "CLI": Clear Interrupt Flag
+ * - [IA32-v3a] 5.8.1: Masking Maskable Hardware Interrupts
+ *************************************************************/
 enum intr_level
-intr_disable (void) {
-	enum intr_level old_level = intr_get_level ();
+intr_disable (void) 
+{
+	enum intr_level old_level = intr_get_level (); // 기존 인터럽트 상태 저장
 
-	/* Disable interrupts by clearing the interrupt flag.
-	   See [IA32-v2b] "CLI" and [IA32-v3a] 5.8.1 "Masking Maskable
-	   Hardware Interrupts". */
+	/* CLI: Clear Interrupt Flag → 인터럽트 비활성화
+	   memory clobber는 컴파일러의 재정렬 방지를 위한 장치 */
 	asm volatile ("cli" : : : "memory");
 
-	return old_level;
+	return old_level; // 이전 인터럽트 상태 반환
 }
 
 /* Initializes the interrupt system. */
@@ -252,11 +299,24 @@ intr_register_int (uint8_t vec_no, int dpl, enum intr_level level,
 	register_handler (vec_no, dpl, level, handler, name);
 }
 
-/* Returns true during processing of an external interrupt
-   and false at all other times. */
+/*************************************************************
+ * intr_context - 외부 인터럽트 처리 중인지를 판별
+ *
+ * 기능:
+ * - 현재 코드 실행이 외부 인터럽트 컨텍스트에서 수행 중인지 여부를 반환
+ * - 인터럽트 핸들러 내부에서만 true를 반환함
+ *
+ * 반환:
+ * - true  → 외부 인터럽트 처리 중
+ * - false → 일반 커널/유저 실행 흐름
+ *
+ * 사용 예:
+ * - thread_block(), thread_unblock 등에서 호출되어
+ *   인터럽트 컨텍스트에서 부적절한 동작을 방지함
+ *************************************************************/
 bool
 intr_context (void) {
-	return in_external_intr;
+	return in_external_intr; // 외부 인터럽트 처리 중인지 나타내는 전역 변수 값 반환
 }
 
 /* During processing of an external interrupt, directs the
