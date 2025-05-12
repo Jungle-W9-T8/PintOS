@@ -92,6 +92,7 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 	int64_t wakeup_ticks;				// 일어날 시각 추가
+	
 	struct list donations;              /* 우선순위 donations를 추적하기 위한 리스트 */
 	struct lock *wait_on_lock;          /* 대기 중인 락 */
 	int base_priority;                  /* 기부 이전 우선순위 */
