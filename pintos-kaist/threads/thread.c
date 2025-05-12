@@ -422,14 +422,10 @@ thread_unblock (struct thread *t)
 void
 preempt_priority(void) 
 {
-    if (!intr_context() && !list_empty(&ready_list)) {	// 인터럽트 핸들러 안에서 실행 중이 아니고, 리스트가 비어있지 않은 경우에만 선점 검사 수행
-        struct thread *cur = thread_current();			// 현재 실행 중인 스레드의 포인터를 가져옴
-        struct thread *front = list_entry(list_front(&ready_list), struct thread, elem);	// 리스트의 맨 앞(우선순위 높은) 스레드를 가져옴
-
-		// printf("[PREEMPT] Current: %s (%d), Front: %s (%d)\n", cur->name, cur->priority, front->name, front->priority);
-        if (cur->priority < front->priority) {			// 만약 현재 스레드보다 더 높은 우선순위의 스레드가 리스트에 있다면
-            // printf("[PREEMPT] Current: %s (%d), Front: %s (%d)\n", cur->name, cur->priority, front->name, front->priority);~
-			thread_yield();								// 현재 스레드는 자발적으로 CPU를 양보하여 스케줄러가 다른 스레드를 실행하게 함
+    if (!intr_context() && !list_empty(&ready_list))
+	{
+        if (thread_current()->priority < list_entry(list_front(&ready_list), struct thread, elem)->priority) {			
+			thread_yield();						
         }
     }
 }
@@ -671,6 +667,12 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	// TODO SOL.
+	t->wait_on_lock = NULL;
+	t->base_priority = NULL;
+	list_init(&t->donations);
+	
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -855,23 +857,3 @@ allocate_tid (void)
 
 	return tid;
 }
-
-// /* ------------------ 디버깅용 리스트 출력 함수 ------------------ */
-// static void
-// debug_print_thread_lists(void) {
-//   struct list_elem *e;
-
-//   // printf("[LIST] ready_list: ");
-//   for (e = list_begin(&ready_list); e != list_end(&ready_list); e = list_next(e)) {
-//     struct thread *t = list_entry(e, struct thread, elem);
-//     printf("(%s, pri=%d) ", t->name, t->priority);
-//   }
-//   printf("\n");
-
-//   // printf("[LIST] sleep_list: ");
-//   for (e = list_begin(&sleep_list); e != list_end(&sleep_list); e = list_next(e)) {
-//     struct thread *t = list_entry(e, struct thread, elem);
-//     printf("(%s, wakeup=%lld) ", t->name, t->wakeup_ticks);
-//   }
-//   printf("\n");
-// }
