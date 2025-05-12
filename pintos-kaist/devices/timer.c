@@ -71,14 +71,27 @@ timer_calibrate (void) {
 	printf ("%'"PRIu64" loops/s.\n", (uint64_t) loops_per_tick * TIMER_FREQ);
 }
 
-/* Returns the number of timer ticks since the OS booted. */
+/*************************************************************
+ * timer_ticks - OS가 부팅된 이후 경과한 총 tick 수를 반환
+ *
+ * 기능:
+ * - 전역 변수 ticks 값을 읽어 반환
+ * - 인터럽트를 비활성화하여 동기화 문제 방지
+ *
+ * 반환:
+ * - 현재까지 누적된 timer tick 수 (int64_t)
+ *
+ * 주의:
+ * - ticks는 인터럽트 핸들러에서 증가하므로, 읽는 동안의 정합성을 위해
+ *   intr_disable()/intr_set_level() 사용
+ *************************************************************/
 int64_t
 timer_ticks (void) {
-	enum intr_level old_level = intr_disable ();
-	int64_t t = ticks;
-	intr_set_level (old_level);
-	barrier ();
-	return t;
+	enum intr_level old_level = intr_disable(); // 인터럽트 비활성화하여 race condition 방지
+	int64_t t = ticks;                          // ticks 값 로컬 변수로 복사
+	intr_set_level(old_level);                  // 인터럽트 상태 원복
+	barrier();                                  // 컴파일러 최적화 방지 (메모리 장벽)
+	return t;                                   // 현재까지의 tick 수 반환
 }
 
 /* Returns the number of timer ticks elapsed since THEN, which
@@ -88,19 +101,54 @@ timer_elapsed (int64_t then) {
 	return timer_ticks () - then;
 }
 
-/* Suspends execution for approximately TICKS timer ticks. */
+/*************************************************************
+ * timer_sleep - 지정된 tick 수만큼 현재 스레드를 재움
+ *
+ * 요구사항:
+ * - busy-wait 없이 정확한 시간 동안 스레드를 BLOCKED 상태로 전환
+ * - 인터럽트를 활성화한 상태에서 호출해야 함
+ * 
+ * 기능:
+ * - 현재 tick을 기준으로, 깨어날 tick을 계산하여 thread_sleep() 호출
+ * - sleep_list에 현재 스레드를 추가하고 BLOCKED 상태로 전환
+ * 
+ * 반환:
+ * - 없음 (void)
+ * 
+ * 주의:
+ * - ticks가 0 이하일 경우 sleep을 수행하지 않음
+ * - intr_get_level() == INTR_ON 상태에서만 호출 가능
+ * - sleep 중인 스레드는 timer_interrupt()에 의해 주기적으로 체크됨
+ * 
+ * [AS-IS]
+ * - busy-wait 방식 사용
+ * - while 루프에서 timer_elapsed()로 경과 시간 확인 후 thread_yield() 호출
+ * → RUNNING 상태 유지하며 CPU 자원 낭비
+ * 
+ * [TO-BE]
+ * - thread_sleep(start + ticks)를 통해 BLOCKED 상태로 진입
+ * - thread_awake()가 타이머 인터럽트 시점마다 sleep_list를 확인하고 깨어남
+ * → 정확하고 효율적인 sleep 가능 (CPU 절약)
+ *************************************************************/
 void
-timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks (); // 현재 시각
+timer_sleep (int64_t ticks) 
+{
+	if (ticks <= 0) return;
 
-	ASSERT (intr_get_level () == INTR_ON);
-	// while (timer_elapsed (start) < ticks)
-	// 	thread_yield (); // 현재 스레드를 READY로 바꾸고 다음 스레드 찾아서 실행
+	int64_t wakeup_tick = timer_ticks() + ticks;
+	thread_sleep(wakeup_tick);  // ✅ 절대값 기반으로 정확한 sleep 리스트 추가
+	
 
-	// start 시점으로부터 흐른 시간보다 ticks가 작으면 현재 스레드 슬립
-	if (timer_elapsed(start) < ticks) { // advanced todo: start 고쳐줘야 함
-		thread_sleep(start+ticks);
-	}
+	// ❌ 문제 있었던 이전 코드 (AS-IS)
+	// int64_t start = timer_ticks();  // 현재 tick 저장
+	// ASSERT (intr_get_level () == INTR_ON);  // 인터럽트 활성화 상태인지 검사
+
+	// if (timer_elapsed(start) < ticks)
+	// 	thread_sleep(start + ticks);  // 호출 타이밍에 따라 무시될 수 있음
+
+	/* ❌ 비효율적인 busy-wait 방식 (AS-IS)
+	while (timer_elapsed(start) < ticks)
+		thread_yield();  // sleep_list에 등록되지 않으므로 깨어날 수 없음 */
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -126,20 +174,43 @@ void
 timer_print_stats (void) {
 	printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
-/* Timer interrupt handler. 
-   [추가]
-	sleep list에서 global tick 이상의 tick을 가진 스레드들을 깨워서 ready list에 넣어준다. 
-	+ global tick 업데이트!
-*/
+
+/*************************************************************
+ * timer_interrupt - 타이머 인터럽트 핸들러
+ *
+ * 요구사항:
+ * - 시스템 틱 수를 증가시켜 전체 시간 흐름을 관리
+ * - 현재 실행 중인 스레드의 time slice를 갱신해야 함
+ * - sleep_list에 등록된 스레드 중 깨어날 시간이 도래한 경우 깨워야 함
+ * 
+ * 기능:
+ * - 전역 변수 ticks를 1 증가시킴
+ * - thread_tick()을 호출하여 현재 스레드의 time slice 소모 체크
+ * - closest_tick(다음 깨어날 시각)과 비교하여 thread_awake() 호출 여부 결정
+ *
+ * 주의:
+ * - 인터럽트 컨텍스트에서 실행되므로 thread_block()과 같은 동작은 금지
+ * - closest_tick은 sleep_list에 있는 가장 이른 wakeup_tick 값을 나타냄
+ * 
+ * [AS-IS]
+ * - 단순히 ticks 증가 및 thread_tick() 호출만 수행
+ * → sleep 상태의 스레드를 깨우는 기능이 없음
+ * 
+ * [TO-BE]
+ * - closest_tick <= ticks일 때만 thread_awake()를 호출하여,
+ *   sleep_list에서 깨어날 시각이 지난 스레드를 READY 상태로 전환
+ * → 정확하고 효율적인 알람 기능 제공
+ *************************************************************/
 static void
-timer_interrupt (struct intr_frame *args UNUSED) {
-	ticks++;
-	thread_tick ();
-	thread_wakeup(ticks);
+timer_interrupt (struct intr_frame *args UNUSED) 
+{
+	ticks++;						// 전체 시스템 tick 수 증가
+	thread_tick ();					// 현재 running 중인 thread의 tick 처리 및 time slice 만료 검사
+	if (closest_tick() <= ticks)  	// 가장 이른 wakeup_tick(closest_tick)이 현재 tick보다 작거나 같다면
+		thread_awake(ticks);		// → 깨어날 시간이 도래한 스레드가 존재할 수 있으므로 thread_awake() 호출
 }
 
-/* Returns true if LOOPS iterations waits for more than one timer
+/* Returns true if LOOPS iterations waits for morcde than one timer
    tick, otherwise false. */
 static bool
 too_many_loops (unsigned loops) {
