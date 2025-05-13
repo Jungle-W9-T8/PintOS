@@ -679,7 +679,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 
 	// TODO SOL.
 	t->wait_on_lock = NULL;
-	t->base_priority = NULL;
+	t->base_priority = priority;
 	list_init(&t->donations);
 	
 }
