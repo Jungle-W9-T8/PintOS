@@ -18,25 +18,6 @@
 #include "userprog/process.h"
 #endif
 
-<<<<<<< HEAD
-/* Random value for struct thread's `magic' member.
-   Used to detect stack overflow.  See the big comment at the top
-   of thread.h for details. */
-#define THREAD_MAGIC 0xcd6abf4b
-
-/* Random value for basic thread
-   Do not modify this value. */
-#define THREAD_BASIC 0xd42df210
-
-/* List of processes in THREAD_READY state, that is, processes
-   that are ready to run but not actually running. */
-static struct list ready_list;
-
-static struct list sleep_list;
-/* Idle thread. */
-static struct thread *idle_thread;
-=======
->>>>>>> db265a9fff8d5cc422cd9119dae010a5befb1010
 
 //=== [2] Thread Constants ===//
 #define THREAD_MAGIC 0xcd6abf4b   // Used to detect stack overflow
@@ -60,28 +41,16 @@ static struct thread *initial_thread;  // main()을 실행하는 최초 스레�
 static int64_t awake_closest_tick;     // 다음으로 깨워야 할 tick = 가장 빠른 wakeup tick 저장
 static unsigned thread_ticks;          // 최근 타임슬라이스 틱 수 = 마지막 yield 이후의 ticks
 
-<<<<<<< HEAD
-int64_t globalTicks = NULL;
-
-static void kernel_thread (thread_func *, void *aux);
-=======
 /* 통계용 틱 카운터 */
 static long long idle_ticks;		   // ❓
 static long long kernel_ticks;		   // ❓
 static long long user_ticks;		   // ❓
->>>>>>> db265a9fff8d5cc422cd9119dae010a5befb1010
 
 /* tid 할당용 락 */
 static struct lock tid_lock;		   // TID 할당용 락
 
-<<<<<<< HEAD
-
-/* Returns true if T appears to point to a valid thread. */
-#define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
-=======
 /* 스케줄러 설정 */
 bool thread_mlfqs;					   // MLFQ 스케줄러 사용 여부
->>>>>>> db265a9fff8d5cc422cd9119dae010a5befb1010
 
 
 //=== [4] GDT 초기화용 커널 전용 GDT ===//
@@ -142,22 +111,12 @@ thread_init (void) {
 	};
 	lgdt (&gdt_ds);                           // GDT 레지스터에 설정값 로드
 
-<<<<<<< HEAD
-	/* Init the globla thread context */
-	globalTicks = 0;
-	lock_init (&tid_lock);
-	list_init (&ready_list);
-
-	list_init (&sleep_list);
-	list_init (&destruction_req);
-=======
 	/* Init the global thread context */
 	lock_init (&tid_lock);                   // TID 할당을 위한 락 초기화
 	list_init (&ready_list);                 // 준비 상태 스레드 리스트 초기화
 	list_init (&sleep_list);                 // ⏰ sleep 상태 스레드 리스트 초기화
 	list_init (&wait_list);					 // ❓
 	list_init (&destruction_req);            // 제거 요청 대기 스레드 리스트 초기화
->>>>>>> db265a9fff8d5cc422cd9119dae010a5befb1010
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();      // 현재 실행 중인 스레드를 thread 구조체로 변환
@@ -253,6 +212,9 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;                   // 코드 세그먼트
 	t->tf.eflags = FLAG_IF;                 // 인터럽트 플래그 설정
 
+	list_init(&t->donations);
+	t->wait_on_lock = NULL;
+	t->base_priority = 0;
 	/* 4. 스레드를 READY 상태로 전환하고 ready_list에 삽입 */
 	thread_unblock (t);
 	
@@ -434,14 +396,6 @@ thread_unblock (struct thread *t)
 
 	ASSERT (is_thread (t));					// 전달된 포인터가 유효한 스레드 구조체인지 확인
 
-<<<<<<< HEAD
-	old_level = intr_disable ();
-	ASSERT (t->status == THREAD_BLOCKED);
-	//list_push_back (&ready_list, &t->elem);
-	list_insert_ordered(&ready_list, &t->elem, cmp_wakeTick, NULL);
-	t->status = THREAD_READY;
-	intr_set_level (old_level);
-=======
 	old_level = intr_disable ();			// 인터럽트 비활성화 (원자적 작업 보장)
 	ASSERT (t->status == THREAD_BLOCKED);	// BLOCKED 상태인지 검증 (그 외 상태면 잘못된 호출)
 	// printf("[UNBLOCK] %s inserted into ready_list (priority: %d)\n", t->name, t->priority);
@@ -468,7 +422,7 @@ thread_unblock (struct thread *t)
  * 주의:
  * - intr_context() 내부에선 yield를 하면 안 되므로 반드시 조건 체크
  * ============================================================= */
-void
+void 
 preempt_priority(void) 
 {
     if (!intr_context() && !list_empty(&ready_list))
@@ -477,7 +431,6 @@ preempt_priority(void)
 			thread_yield();						
         }
     }
->>>>>>> db265a9fff8d5cc422cd9119dae010a5befb1010
 }
 
 /* Returns the name of the running thread. */
@@ -591,71 +544,6 @@ cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNU
 	return ta->priority > tb->priority;				 // 우선순위가 높은 (값이 큰) 스레드를 먼저 배치
 }
 
-<<<<<<< HEAD
-bool cmp_wakeTick(struct list_elem *a, struct list_elem *b, void *aux UNUSED)
-{
-	struct thread *threadA = list_entry(a, struct thread, elem);
-	struct thread *threadB = list_entry(b, struct thread, elem);
-	return threadA->wakeup_tick < threadB->wakeup_tick;
-}
-
-void thread_wakeUp(int64_t curTick)
-{
-	if(globalTicks == NULL) return;
-	
-
-	// curTick은 OS 기반으로 부팅 된 시간을 확인해옴
-	// globalTicks는 현재 쓰레드 중 제일 최소 시간을 말함. 그러니까 globalTicks를 지났다는 시점에서 순회를 시작함. 사실상 자원 절약의 핵심 코드
-	if(curTick >= globalTicks)
-	{
-		struct thread *curr = thread_current ();
-		struct list_elem *e;
-		int64_t nextGlobalTick = NULL;
-	
-		while(!list_empty(&sleep_list))
-		{
-			e = list_begin(&sleep_list);
-			
-			struct thread *tmp = list_entry(e, struct thread, elem);
-
-			if(tmp->wakeup_tick <= curTick)
-			{
-				list_remove(e);
-				thread_unblock(tmp);
-			}
-			else break;
-		}
-
-		if(list_empty(&sleep_list))
-			globalTicks = NULL;
-		else
-			globalTicks = list_entry(e, struct thread, elem)->wakeup_tick;
-
-	}
-}
-
-void thread_sleep(int64_t ticks)
-{
-	struct thread *curr = thread_current ();
-	curr->wakeup_tick = ticks;		
-
-	enum intr_level old_level;
-	old_level = intr_disable ();
-
-	//if(curr != idle_thread)
-	
-		if(globalTicks == NULL || globalTicks > ticks)
-			globalTicks = ticks;
-		list_insert_ordered(&sleep_list, &curr->elem, cmp_wakeTick, NULL);
-
-		thread_block();
-	
-
-	intr_set_level (old_level);
-}
-
-/* Sets the current thread's priority to NEW_PRIORITY. */
-=======
 /*************************************************************
  * thread_set_priority - 현재 실행 중인 스레드의 우선순위 변경
  *
@@ -674,7 +562,6 @@ void thread_sleep(int64_t ticks)
  * 참고:
  * - 스레드 생성 시 초기 우선순위는 thread_create()에서 설정됨
  *************************************************************/
->>>>>>> db265a9fff8d5cc422cd9119dae010a5befb1010
 void
 thread_set_priority (int new_priority) 
 {

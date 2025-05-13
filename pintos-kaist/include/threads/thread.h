@@ -141,6 +141,9 @@ bool cmp_wakeTick(struct list_elem *a, struct list_elem *b, void *aux UNUSED);
 void thread_block (void);
 void thread_unblock (struct thread *);
 
+// 다른 곳에서도 사용처를 만들어야 하여 헤더에 선언.
+void preempt_priority(void);
+
 struct thread *thread_current (void);
 tid_t thread_tid (void);
 void thread_sleep(int64_t ticks);
