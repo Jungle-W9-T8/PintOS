@@ -134,21 +134,8 @@ void
 timer_sleep (int64_t ticks) 
 {
 	if (ticks <= 0) return;
-
 	int64_t wakeup_tick = timer_ticks() + ticks;
 	thread_sleep(wakeup_tick);  // ✅ 절대값 기반으로 정확한 sleep 리스트 추가
-	
-
-	// ❌ 문제 있었던 이전 코드 (AS-IS)
-	// int64_t start = timer_ticks();  // 현재 tick 저장
-	// ASSERT (intr_get_level () == INTR_ON);  // 인터럽트 활성화 상태인지 검사
-
-	// if (timer_elapsed(start) < ticks)
-	// 	thread_sleep(start + ticks);  // 호출 타이밍에 따라 무시될 수 있음
-
-	/* ❌ 비효율적인 busy-wait 방식 (AS-IS)
-	while (timer_elapsed(start) < ticks)
-		thread_yield();  // sleep_list에 등록되지 않으므로 깨어날 수 없음 */
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -266,19 +253,3 @@ real_time_sleep (int64_t num, int32_t denom) {
 		busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000));
 	}
 }
-
-// bool wakeup_ticks_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
-//     struct thread *t1 = list_entry(a, struct thread, elem);
-//     struct thread *t2 = list_entry(b, struct thread, elem);
-
-//     return t1->wakeup_tick < t2->wakeup_tick;
-// }
-
-// void update_min_tick(struct list *list) 
-// {
-// 	struct list_elem *min_elem = list_min (list, wakeup_ticks_less, NULL);
-
-// 	if (min_elem != list_end(list)) {
-// 		struct thread *min_thread = list_entry(min_elem, struct thread, elem);
-// 	}
-// }
