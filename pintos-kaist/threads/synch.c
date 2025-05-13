@@ -215,21 +215,23 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
-   // struct thread *cur = thread_current();
-   // if(lock->semaphore.value == 0)
-   //    cur->wait_on_lock = lock;
+   struct thread *cur = thread_current();
+   if(lock->semaphore.value == 0)
+      cur->wait_on_lock = lock;
 
-   // if(cur->priority > lock->holder->priority)
-   // {
-   //    cur->base_priority = lock->holder->priority;
-   //    lock->holder->priority = cur->priority;
+   if(cur->priority > lock->holder->priority)
+   {
+       cur->base_priority = lock->holder->priority;
+       lock->holder->priority = cur->priority;
       
-   //    if(lock->holder != NULL)
-   //    {
+       if(lock->holder != NULL)
+       {
          
-   //    }
-   //    // 이 과정에서 대기 중인 락이 또 다른 쓰레드에 의해 점유중이라면 재귀적 우선순위 전파 필요.
-   // }
+       }
+       // 이 과정에서 대기 중인 락이 또 다른 쓰레드에 의해 점유중이라면 재귀적 우선순위 전파 필요.
+
+       // 
+   }
 
    // 기부된 쓰레드 관리
 
