@@ -77,7 +77,7 @@ static tid_t allocate_tid (void);
 /* ------------------ Ready/Sleep Queue Compare Functions ------------------ */
 bool cmp_priority (const struct list_elem *a, const struct list_elem *b, void *aux);
 static bool cmp_wakeup_tick (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
-static void preempt_priority(void);
+void preempt_priority(void);
 
 /* ------------------ Debug Utilities ------------------ */
 // static void debug_print_thread_lists (void);    // 디버깅용 리스트 출력 함수
