@@ -200,12 +200,7 @@ lock_init (struct lock *lock) {
        - 현재 스레드의 우선순위가 락 소유자보다 높다면 base_priority를 저장해두고 락 소유자에게 우선순위를 기부한다.
        - 이 과정에서 대기 중인 락이 또 다른 스레드에 의해 점유중이라면 재귀적으로 우선순위를 전파해야 한다. (Nested Donation)
 
-    3. 기부된 스레드(donated thread) 관리
-       - donations 리스트를 통해 기부 가능한 우선순위를 추적한다.
-       - 가장 높은 우선순위 스레드에게 기부받은 락과 우선순위를 관리한다. -> 구조체 vs 리스트 방식 중 선택할것
-       - 락이 해제되면 해당 락과 관련된 donation 항목을 donations 리스트에서 제거한다.
-
-    4. 락 획득 시 대기 중인 락 초기화
+    3. 락 획득 시 대기 중인 락 초기화
        - 락을 획득하면 thread->wait_on_lock 멤버변수를 NULL로 초기화해서 대기 상태를 해제한다.
    */
 void
@@ -214,8 +209,35 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
+	enum intr_level old_level;
+
+	struct thread *curr = thread_current ();	
+
+	if ((lock->holder != NULL) && (curr->priority > lock->holder->priority)) {
+		old_level = intr_disable ();
+		struct thread *temp = curr;
+		int cnt = 0;
+		list_insert_ordered(&lock->holder->donations, &temp->d_elem, cmp_priority_donations, NULL);
+		while (((temp -> wait_on_lock) != NULL ) || (cnt <= 8)) {
+			cnt += 1;
+			struct thread *new_holder = temp->wait_on_lock->holder;
+			if (temp->priority > new_holder->priority) {
+				if ((temp->d_elem.prev != NULL) && (temp->d_elem.next != NULL)) { // 기부를 안 하고 있는 스레드라면
+					list_sort(&new_holder->donations, cmp_priority_donations, NULL);
+				}
+				else {
+					list_insert_ordered(&new_holder->donations, &temp->d_elem, cmp_priority_donations, NULL); // todo: priority 기준 cmp_priority 생성
+				}
+				new_holder->priority = curr->priority;
+			}
+			temp = new_holder;
+		}	
+		intr_set_level (old_level);
+	}
 	sema_down (&lock->semaphore);
-	lock->holder = thread_current ();
+	lock->holder = curr;
+	curr->wait_on_lock = NULL;
+	preempt_priority();
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
