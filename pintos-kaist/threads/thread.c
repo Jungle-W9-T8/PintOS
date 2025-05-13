@@ -77,7 +77,7 @@ static tid_t allocate_tid (void);
 /* ------------------ Ready/Sleep Queue Compare Functions ------------------ */
 bool cmp_priority (const struct list_elem *a, const struct list_elem *b, void *aux);
 static bool cmp_wakeup_tick (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
-// static void preempt_priority(void);
+void preempt_priority(void);
 
 /* ------------------ Debug Utilities ------------------ */
 // static void debug_print_thread_lists (void);    // 디버깅용 리스트 출력 함수
@@ -544,6 +544,15 @@ cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNU
 	return ta->priority > tb->priority;				 // 우선순위가 높은 (값이 큰) 스레드를 먼저 배치
 }
 
+bool
+cmp_priority_donations(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) 
+{
+	struct thread *ta = list_entry(a, struct thread, d_elem);		// a 요소를 thread 구조체로 변환
+	struct thread *tb = list_entry(b, struct thread, d_elem);		// b 요소를 thread 구조체로 변환
+
+	return ta->priority > tb->priority;				 // 우선순위가 높은 (값이 큰) 스레드를 먼저 배치
+}
+
 /*************************************************************
  * thread_set_priority - 현재 실행 중인 스레드의 우선순위 변경
  *
@@ -672,8 +681,9 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 
+	// TODO SOL.
 	t->wait_on_lock = NULL;
-	t->base_priority = NULL;
+	t->base_priority = priority;
 	list_init(&t->donations);
 	
 }
