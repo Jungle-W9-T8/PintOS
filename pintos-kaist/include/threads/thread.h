@@ -99,6 +99,7 @@ struct thread {
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+	struct list_elem d_elem;            /* Donations List element. */
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -112,6 +113,8 @@ struct thread {
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
+
+	int64_t wakeup_tick;               /* 깨어나기까지 남은 시간 */ 
 };
 
 /* If false (default), use round-robin scheduler.
@@ -125,6 +128,7 @@ void thread_awake (int64_t global_ticks);
 void update_closest_tick (int64_t ticks);
 int64_t closest_tick (void);
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
+bool cmp_priority_donations(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 void thread_init (void);
 void thread_start (void);
