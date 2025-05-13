@@ -57,6 +57,9 @@ sema_init (struct semaphore *sema, unsigned value) {
    interrupts disabled, but if it sleeps then the next scheduled
    thread will probably turn interrupts back on. This is
    sema_down function. 
+
+
+   TODO 구현 완료 May 12
    */
 void
 sema_down (struct semaphore *sema) {
@@ -115,11 +118,12 @@ sema_up (struct semaphore *sema) {
 	old_level = intr_disable ();
 	if (!list_empty (&sema->waiters))
    {
-   	list_sort(&sema->waiters, cmp_priority ,NULL);
+      list_sort(&sema->waiters, cmp_priority ,NULL);
 		thread_unblock (list_entry (list_pop_front (&sema->waiters), struct thread, elem));
    }
 	sema->value++;
    preempt_priority();
+
 	intr_set_level (old_level);
 }
 
@@ -211,21 +215,25 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
-   struct thread *cur = thread_current();
-   if(lock->semaphore.value == 0)
-      cur->wait_on_lock = lock;
+   // struct thread *cur = thread_current();
+   // if(lock->semaphore.value == 0)
+   //    cur->wait_on_lock = lock;
 
-   if(cur->priority > lock->holder->priority)
-   {
-      cur->base_priority = lock->holder->priority;
-      lock->holder->priority = cur->priority;
+   // if(cur->priority > lock->holder->priority)
+   // {
+   //    cur->base_priority = lock->holder->priority;
+   //    lock->holder->priority = cur->priority;
       
-      // 이 과정에서 대기 중인 락이 또 다른 쓰레드에 의해 점유중이라면 재귀적 우선순위 전파 필요.
-   }
+   //    if(lock->holder != NULL)
+   //    {
+         
+   //    }
+   //    // 이 과정에서 대기 중인 락이 또 다른 쓰레드에 의해 점유중이라면 재귀적 우선순위 전파 필요.
+   // }
 
+   // 기부된 쓰레드 관리
 
-
-
+   // 락을 획득하면 그 이후 작업을 한다.
 	sema_down (&lock->semaphore);
 	lock->holder = thread_current ();
 }
@@ -330,8 +338,8 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (lock_held_by_current_thread (lock));
 
-	sema_init (&waiter.semaphore, 0);
-		list_insert_ordered(&cond->waiters, &waiter.elem, cmp_priority, NULL);
+	sema_init (&waiter.semaphore, 0);   
+	list_insert_ordered(&cond->waiters, &waiter.elem, cmp_priority, NULL);
 	lock_release (lock);
 	sema_down (&waiter.semaphore);
 	lock_acquire (lock);

@@ -77,7 +77,7 @@ static tid_t allocate_tid (void);
 /* ------------------ Ready/Sleep Queue Compare Functions ------------------ */
 bool cmp_priority (const struct list_elem *a, const struct list_elem *b, void *aux);
 static bool cmp_wakeup_tick (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
-static void preempt_priority(void);
+// static void preempt_priority(void);
 
 /* ------------------ Debug Utilities ------------------ */
 // static void debug_print_thread_lists (void);    // 디버깅용 리스트 출력 함수
@@ -566,7 +566,7 @@ void
 thread_set_priority (int new_priority) 
 {
 	thread_current ()->priority = new_priority;
-	preempt_priority();		// 🔥 우선순위 하락 시 즉시 스케줄링 변경 여부 확인
+	//preempt_priority();		// 🔥 우선순위 하락 시 즉시 스케줄링 변경 여부 확인
 }
 
 /* Returns the current thread's priority. */
@@ -653,6 +653,7 @@ kernel_thread (thread_func *function, void *aux) {
 /* Does basic initialization of T as a blocked thread named
    NAME. 
    
+   // Todo Completed May 13
    ✅ TODO: priority donation을 위해 필요한 필드 초기화
      1. donations 리스트 초기화 - 우선순위 기부 내역을 관리하기 위한 리스트
      2. wait_on_lock 초기화 - 대기 중인 락의 주소를 추적하기 위한 포인터
@@ -671,7 +672,6 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 
-	// TODO SOL.
 	t->wait_on_lock = NULL;
 	t->base_priority = NULL;
 	list_init(&t->donations);
