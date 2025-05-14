@@ -583,8 +583,11 @@ cmp_priority_donation(const struct list_elem *a, const struct list_elem *b, void
 void
 thread_set_priority (int new_priority) 
 {
-	thread_current ()->priority = new_priority;
-	thread_current ()->base_priority = new_priority;
+	struct thread *thr = thread_current();
+
+	//thread_current ()->priority = new_priority;
+	thr->base_priority = new_priority;
+	recal_priority(thr);
 	preempt_priority();		// 🔥 우선순위 하락 시 즉시 스케줄링 변경 여부 확인
 }
 

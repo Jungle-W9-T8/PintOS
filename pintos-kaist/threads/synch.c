@@ -277,35 +277,20 @@ lock_release (struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
    struct thread *curr = thread_current();
+   struct list_elem *e;
    lock->holder = NULL;
-
-   if(!(list_empty(&curr->donations))) list_pop_front(&curr->donations);
-   curr->priority = curr->base_priority;
-
-   if(!(list_empty(&curr->donations)))
+   
+   for (e = list_begin (&curr->donations); e != list_end (&curr->donations); e = list_next(e))
    {
-      struct thread *unblockThread = list_entry (list_front (&curr->donations), struct thread, d_elem);
-      if(unblockThread->wait_on_lock->holder == curr)
-      {
-         curr->priority = unblockThread->priority;
-      }
+      struct thread *donaItem = list_entry (list_front (&curr->donations), struct thread, d_elem);
+      if(donaItem->wait_on_lock == lock)
+         list_remove(e);
    }
 
+   recal_priority(curr);
+   sema_up (&lock->semaphore);
+   //thread_yield();
 
-   // TODO #1 만족
-   // if(!(list_empty(donaList)))
-   // {
-   //    struct thread *unblockThread = list_pop_front(donaList);
-   //    thread_unblock(unblockThread);
-   //    lock->holder = unblockThread;
-   //    preempt_priority();
-   //    return;
-   // }
-   // if(!(list_empty(&curr->donations)))
-   //    list_pop_front(&curr->donations);
-
-	sema_up (&lock->semaphore);
-   //preempt_priority();
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -429,4 +414,18 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 
 	while (!list_empty (&cond->waiters))
 		cond_signal (cond, lock);
+}
+
+void recal_priority(struct thread *t)
+{
+    int max_p = t->base_priority; /* base_priority로 초기화 */
+    /* 해상 thread의 donations list에 있는 thread들을 순회하며 가장 큰 priority를 탐색 */
+    for(struct list_elem *e = list_begin(&t->donations); e != list_end(&t->donations); e = list_next(e))
+    {
+        struct thread *cmp_t = list_entry(e, struct thread, d_elem);
+        max_p = max_p > cmp_t->priority ? max_p : cmp_t->priority;
+    }
+    // max_p = max_p > t->priority ? max_p : t->priority; /* 현재 thread의 우선 순위와 donations list 중에 큰 priority로 갱신 */
+    t->priority = max_p; /* t의 priority 값 갱신 */
+    return;
 }
