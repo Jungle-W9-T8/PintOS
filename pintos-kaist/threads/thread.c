@@ -545,10 +545,10 @@ cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNU
 }
 
 bool
-cmp_priority_donations(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) 
+cmp_priority_only(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) 
 {
-	struct thread *ta = list_entry(a, struct thread, d_elem);		// a 요소를 thread 구조체로 변환
-	struct thread *tb = list_entry(b, struct thread, d_elem);		// b 요소를 thread 구조체로 변환
+	struct thread *ta = list_entry(a, struct thread, elem);		// a 요소를 thread 구조체로 변환
+	struct thread *tb = list_entry(b, struct thread, elem);		// b 요소를 thread 구조체로 변환
 
 	return ta->priority > tb->priority;				 // 우선순위가 높은 (값이 큰) 스레드를 먼저 배치
 }
@@ -575,7 +575,7 @@ void
 thread_set_priority (int new_priority) 
 {
 	thread_current ()->priority = new_priority;
-	//preempt_priority();		// 🔥 우선순위 하락 시 즉시 스케줄링 변경 여부 확인
+	preempt_priority();		// 🔥 우선순위 하락 시 즉시 스케줄링 변경 여부 확인
 }
 
 /* Returns the current thread's priority. */

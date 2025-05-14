@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "synch.h": "c",
-        "stdbool.h": "c"
+        "stdbool.h": "c",
+        "thread.h": "c"
     }
 }

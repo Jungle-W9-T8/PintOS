@@ -69,7 +69,7 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		list_insert_ordered(&sema->waiters, &thread_current ()->elem, cmp_priority_donations, NULL);
+		list_insert_ordered(&sema->waiters, &thread_current ()->elem, cmp_priority_only, NULL);
 		thread_block ();
 	}
 	sema->value--;
@@ -117,7 +117,7 @@ sema_up (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	if (!list_empty (&sema->waiters)) {
-		list_sort(&sema->waiters, cmp_priority_donations, NULL);
+		list_sort(&sema->waiters, cmp_priority_only, NULL);
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
 					struct thread, elem));
 	}
@@ -218,7 +218,7 @@ lock_init (struct lock *lock) {
         old_level = intr_disable ();
         struct thread *temp = curr;
         struct thread *new_holder = temp->wait_on_lock->holder;
-        list_insert_ordered(&lock->holder->donations, &temp->d_elem, cmp_priority_donations, NULL);
+        list_insert_ordered(&lock->holder->donations, &temp->d_elem, cmp_priority_only, NULL);
   
         if (temp->priority > new_holder->priority) {
            int cnt = 0;
@@ -227,10 +227,10 @@ lock_init (struct lock *lock) {
               // struct thread *new_holder = temp->wait_on_lock->holder;
               if (temp->priority > new_holder->priority) {
                  if ((temp->d_elem.prev != NULL) && (temp->d_elem.next != NULL)) { // 기부를 안 하고 있는 스레드라면
-                    list_sort(&new_holder->donations, cmp_priority_donations, NULL);
+                    list_sort(&new_holder->donations, cmp_priority_only, NULL);
                  }
                  else {
-                    list_insert_ordered(&new_holder->donations, &temp->d_elem, cmp_priority_donations, NULL); // todo: priority 기준 cmp_priority 생성
+                    list_insert_ordered(&new_holder->donations, &temp->d_elem, cmp_priority_only, NULL); // todo: priority 기준 cmp_priority 생성
                  }
                  new_holder->priority = curr->priority;
               }
@@ -289,26 +289,26 @@ lock_release (struct lock *lock) {
    struct thread *tmp = lock->holder;
    lock->holder = NULL;
 
-   ASSERT(tmp != NULL);
+   // ASSERT(tmp != NULL);
 
-	old_level = intr_disable ();
-   // 락을 기다리는 사람들은 어디서 찾음?
-   // 기부받았던 우선순위에서 원래 우선순위로 복구
+	// old_level = intr_disable ();
+   // // 락을 기다리는 사람들은 어디서 찾음?
+   // // 기부받았던 우선순위에서 원래 우선순위로 복구
 
-   if((!list_empty(&tmp->donations)))
-   {
-      thread_unblock (list_entry (list_pop_front (&tmp->donations), struct thread, elem));
-   }
+   // if((!list_empty(&tmp->donations)))
+   // {
+   //    thread_unblock (list_entry (list_pop_front (&tmp->donations), struct thread, elem));
+   // }
 
-   if(!(list_empty(&tmp->donations)))
-      curr->priority = (list_entry (list_front (&tmp->donations), struct thread, elem))->priority;
-   else
-      curr->priority = curr->base_priority;
+   // if(!(list_empty(&tmp->donations)))
+   //    curr->priority = (list_entry (list_front (&tmp->donations), struct thread, elem))->priority;
+   // else
+   //    curr->priority = curr->base_priority;
 
 	sema_up (&lock->semaphore);
-   preempt_priority();
+   //preempt_priority();
 
-	intr_set_level (old_level);
+   //	intr_set_level (old_level);
 
 }
 
