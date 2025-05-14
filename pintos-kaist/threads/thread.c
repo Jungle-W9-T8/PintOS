@@ -77,7 +77,6 @@ static tid_t allocate_tid (void);
 /* ------------------ Ready/Sleep Queue Compare Functions ------------------ */
 bool cmp_priority (const struct list_elem *a, const struct list_elem *b, void *aux);
 static bool cmp_wakeup_tick (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
-void preempt_priority(void);
 
 /* ------------------ Debug Utilities ------------------ */
 // static void debug_print_thread_lists (void);    // 디버깅용 리스트 출력 함수
@@ -117,6 +116,7 @@ thread_init (void) {
 	list_init (&sleep_list);                 // ⏰ sleep 상태 스레드 리스트 초기화
 	list_init (&wait_list);					 // ❓
 	list_init (&destruction_req);            // 제거 요청 대기 스레드 리스트 초기화
+	
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();      // 현재 실행 중인 스레드를 thread 구조체로 변환
@@ -214,7 +214,7 @@ thread_create (const char *name, int priority,
 
 	list_init(&t->donations);
 	t->wait_on_lock = NULL;
-	t->base_priority = 0;
+	t->base_priority = t->priority;
 	/* 4. 스레드를 READY 상태로 전환하고 ready_list에 삽입 */
 	thread_unblock (t);
 	
@@ -685,6 +685,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->wait_on_lock = NULL;
 	t->base_priority = priority;
 	list_init(&t->donations);
+
 	
 }
 

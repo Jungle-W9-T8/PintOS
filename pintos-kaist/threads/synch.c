@@ -69,11 +69,11 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		list_insert_ordered(&sema->waiters, &thread_current ()->elem, cmp_priority, NULL);
+		list_insert_ordered(&sema->waiters, &thread_current ()->elem, cmp_priority_donations, NULL);
 		thread_block ();
 	}
 	sema->value--;
-	preempt_priority();
+   preempt_priority();
 	intr_set_level (old_level);
 }
 
@@ -117,7 +117,7 @@ sema_up (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	if (!list_empty (&sema->waiters)) {
-		list_sort(&sema->waiters, cmp_priority, NULL);
+		list_sort(&sema->waiters, cmp_priority_donations, NULL);
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
 					struct thread, elem));
 	}
@@ -181,6 +181,7 @@ lock_init (struct lock *lock) {
 	ASSERT (lock != NULL);
 
 	lock->holder = NULL;
+   
 	sema_init (&lock->semaphore, 1);
 }
 
@@ -203,46 +204,47 @@ lock_init (struct lock *lock) {
     3. 락 획득 시 대기 중인 락 초기화
        - 락을 획득하면 thread->wait_on_lock 멤버변수를 NULL로 초기화해서 대기 상태를 해제한다.
    */
-void
-lock_acquire (struct lock *lock) {
-	ASSERT (lock != NULL);
-	ASSERT (!intr_context ());
-	ASSERT (!lock_held_by_current_thread (lock));
-
-	enum intr_level old_level;
-
-	struct thread *curr = thread_current ();	
-
-	if (lock->holder != NULL) {
-		old_level = intr_disable ();
-		struct thread *temp = curr;
-		struct thread *new_holder = temp->wait_on_lock->holder;
-		list_insert_ordered(&lock->holder->donations, &temp->d_elem, cmp_priority_donations, NULL);
-
-		if (temp->priority > new_holder->priority) {
-			int cnt = 0;
-			while (((temp -> wait_on_lock) != NULL ) && (cnt <= 8)) {
-				cnt += 1;
-				// struct thread *new_holder = temp->wait_on_lock->holder;
-				if (temp->priority > new_holder->priority) {
-					if ((temp->d_elem.prev != NULL) && (temp->d_elem.next != NULL)) { // 기부를 안 하고 있는 스레드라면
-						list_sort(&new_holder->donations, cmp_priority_donations, NULL);
-					}
-					else {
-						list_insert_ordered(&new_holder->donations, &temp->d_elem, cmp_priority_donations, NULL); // todo: priority 기준 cmp_priority 생성
-					}
-					new_holder->priority = curr->priority;
-				}
-				temp = new_holder;
-			}	
-			intr_set_level (old_level);
-		}
-		sema_down (&lock->semaphore);
-		lock->holder = curr;
-		curr->wait_on_lock = NULL;
-		preempt_priority();
-	}
-}
+  void
+  lock_acquire (struct lock *lock) {
+     ASSERT (lock != NULL);
+     ASSERT (!intr_context ());
+     ASSERT (!lock_held_by_current_thread (lock));
+  
+     enum intr_level old_level;
+  
+     struct thread *curr = thread_current ();	
+  
+     if (lock->holder != NULL) {
+        old_level = intr_disable ();
+        struct thread *temp = curr;
+        struct thread *new_holder = temp->wait_on_lock->holder;
+        list_insert_ordered(&lock->holder->donations, &temp->d_elem, cmp_priority_donations, NULL);
+  
+        if (temp->priority > new_holder->priority) {
+           int cnt = 0;
+           while (((temp -> wait_on_lock) != NULL ) && (cnt <= 8)) {
+              cnt += 1;
+              // struct thread *new_holder = temp->wait_on_lock->holder;
+              if (temp->priority > new_holder->priority) {
+                 if ((temp->d_elem.prev != NULL) && (temp->d_elem.next != NULL)) { // 기부를 안 하고 있는 스레드라면
+                    list_sort(&new_holder->donations, cmp_priority_donations, NULL);
+                 }
+                 else {
+                    list_insert_ordered(&new_holder->donations, &temp->d_elem, cmp_priority_donations, NULL); // todo: priority 기준 cmp_priority 생성
+                 }
+                 new_holder->priority = curr->priority;
+              }
+              temp = new_holder;
+           }	
+           intr_set_level (old_level);
+        }
+  
+     }
+     sema_down (&lock->semaphore);
+     lock->holder = curr;
+     curr->wait_on_lock = NULL;
+     preempt_priority();
+  }
 
 /* Tries to acquires LOCK and returns true if successful or false
    on failure.  The lock must not already be held by the current
@@ -271,19 +273,43 @@ lock_try_acquire (struct lock *lock) {
    handler. 
 
    ✅ TODO: 
-    1. 현재 스레드가 소유하고 있던 락 해제 후 락 대기하고 있던 스레드들 중 가장 높은 우선순위를 가진 스레드를 UNBLOCK
-    2. 기부받았던 우선순위에서 원래 우선순위로 복구
+    1. 현재 스레드가 소유하고 있던 락 해제 후 
+    // 락 대기하고 있던 스레드들 중 가장 높은 우선순위를 가진 스레드를 UNBLOCK
+    2. 락을 들고있던 기부받았던 우선순위에서 원래 우선순위로 복구
    */
 void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
-	lock->holder = NULL;
+
+	enum intr_level old_level;
+   
+   // 현재 스레드가 소유하고 있던 락 해제
+   struct thread *curr = thread_current();
+   struct thread *tmp = lock->holder;
+   lock->holder = NULL;
+
+   ASSERT(tmp != NULL);
+
+	old_level = intr_disable ();
    // 락을 기다리는 사람들은 어디서 찾음?
-   //현재 스레드가 소유하고 있던 락 해제
-   // 후 락 대기하고 있던 스레드들 중 가장 높은 우선순위를 가진 스레드를 UNBLOCK
    // 기부받았던 우선순위에서 원래 우선순위로 복구
+
+   if((!list_empty(&tmp->donations)))
+   {
+      thread_unblock (list_entry (list_pop_front (&tmp->donations), struct thread, elem));
+   }
+
+   if(!(list_empty(&tmp->donations)))
+      curr->priority = (list_entry (list_front (&tmp->donations), struct thread, elem))->priority;
+   else
+      curr->priority = curr->base_priority;
+
 	sema_up (&lock->semaphore);
+   preempt_priority();
+
+	intr_set_level (old_level);
+
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -295,7 +321,7 @@ lock_held_by_current_thread (const struct lock *lock) {
 
 	return lock->holder == thread_current ();
 }
-
+
 /* One semaphore in a list. */
 struct semaphore_elem {
 	struct list_elem elem;              /* List element. */
@@ -345,7 +371,7 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	sema_init (&waiter.semaphore, 0);
-	list_insert_ordered(&cond->waiters, &waiter.elem, cmp_priority, NULL);
+	list_insert_ordered(&cond->waiters, &waiter.elem, cmp_priority_donations, NULL);
 	lock_release (lock);
 	sema_down (&waiter.semaphore);
 	lock_acquire (lock);
@@ -369,7 +395,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	if (!list_empty (&cond->waiters)) {
-		list_sort(&cond->waiters, cmp_priority, NULL);
+		list_sort(&cond->waiters, cmp_priority_donations, NULL);
 		sema_up (&list_entry (list_pop_front (&cond->waiters), struct semaphore_elem, elem)->semaphore);
 	}	
 }
