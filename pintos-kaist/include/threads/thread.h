@@ -129,6 +129,8 @@ void update_closest_tick (int64_t ticks);
 int64_t closest_tick (void);
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 bool cmp_priority_donations(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+void preempt_priority(void);
+bool cmp_sema_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 void thread_init (void);
 void thread_start (void);
@@ -158,7 +160,5 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
-
-void preempt_priority(void);
 
 #endif /* threads/thread.h */
