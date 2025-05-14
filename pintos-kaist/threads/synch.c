@@ -292,7 +292,7 @@ lock_held_by_current_thread (const struct lock *lock) {
 
 	return lock->holder == thread_current ();
 }
-
+
 /* One semaphore in a list. */
 struct semaphore_elem {
 	struct list_elem elem;              /* List element. */
@@ -342,7 +342,7 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	sema_init (&waiter.semaphore, 0);
-	list_insert_ordered(&cond->waiters, &waiter.elem, cmp_priority, NULL);
+	list_insert_ordered(&cond->waiters, &waiter.elem, cmp_sema_priority, NULL);
 	lock_release (lock);
 	sema_down (&waiter.semaphore);
 	lock_acquire (lock);
@@ -366,9 +366,29 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	if (!list_empty (&cond->waiters)) {
-		list_sort(&cond->waiters, cmp_priority, NULL);
+		list_sort(&cond->waiters, cmp_sema_priority, NULL);
 		sema_up (&list_entry (list_pop_front (&cond->waiters), struct semaphore_elem, elem)->semaphore);
 	}	
+}
+
+bool
+cmp_sema_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+	struct semaphore_elem *sema_a = list_entry(a, struct semaphore_elem, elem);		// a 요소를 semaphore_elem 구조체로 변환
+	struct semaphore_elem *sema_b = list_entry(b, struct semaphore_elem, elem);		// b 요소를 semaphore_elem 구조체로 변환
+
+	struct list *waiters_a = &(sema_a->semaphore.waiters);
+	struct list *waiters_b = &(sema_b->semaphore.waiters);
+
+	if (list_empty(waiters_a)) return false;
+	if (list_empty(waiters_b)) return true;
+
+	struct thread *thread_a = list_entry(list_front(waiters_a), struct thread, elem);
+	struct thread *thread_b = list_entry(list_front(waiters_b), struct thread, elem);
+
+	if (thread_a->priority == thread_b->priority)				 // 우선순위가 같은 경우 (tie-breaker)
+		return thread_a->wakeup_ticks < thread_b->wakeup_ticks;  // wakeup_thicks가 빠른 스레드를 우선 배치 (FIFO)
+	return thread_a->priority > thread_b->priority;				 // 우선순위가 높은 (값이 큰) 스레드를 먼저 배치
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
