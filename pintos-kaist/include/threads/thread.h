@@ -129,6 +129,7 @@ void update_closest_tick (int64_t ticks);
 int64_t closest_tick (void);
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 bool cmp_priority_only(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool cmp_priority_donation(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 void preempt_priority(void);
 bool cmp_sema_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
