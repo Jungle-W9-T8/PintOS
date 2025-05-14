@@ -204,47 +204,36 @@ lock_init (struct lock *lock) {
     3. 락 획득 시 대기 중인 락 초기화
        - 락을 획득하면 thread->wait_on_lock 멤버변수를 NULL로 초기화해서 대기 상태를 해제한다.
    */
-  void
-  lock_acquire (struct lock *lock) {
-     ASSERT (lock != NULL);
-     ASSERT (!intr_context ());
-     ASSERT (!lock_held_by_current_thread (lock));
-  
-     enum intr_level old_level;
-  
-     struct thread *curr = thread_current ();	
-  
-     if (lock->holder != NULL) {
-        old_level = intr_disable ();
+void
+lock_acquire (struct lock *lock) {
+    ASSERT (lock != NULL);
+    ASSERT (!intr_context ());
+    ASSERT (!lock_held_by_current_thread (lock));
+    
+    struct thread *curr = thread_current ();	
+    if (lock->holder != NULL) {
+        curr->wait_on_lock = lock;
         struct thread *temp = curr;
-        struct thread *new_holder = temp->wait_on_lock->holder;
-        list_insert_ordered(&lock->holder->donations, &temp->d_elem, cmp_priority_only, NULL);
-  
-        if (temp->priority > new_holder->priority) {
-           int cnt = 0;
-           while (((temp -> wait_on_lock) != NULL ) && (cnt <= 8)) {
-              cnt += 1;
-              // struct thread *new_holder = temp->wait_on_lock->holder;
-              if (temp->priority > new_holder->priority) {
-                 if ((temp->d_elem.prev != NULL) && (temp->d_elem.next != NULL)) { // 기부를 안 하고 있는 스레드라면
-                    list_sort(&new_holder->donations, cmp_priority_only, NULL);
-                 }
-                 else {
-                    list_insert_ordered(&new_holder->donations, &temp->d_elem, cmp_priority_only, NULL); // todo: priority 기준 cmp_priority 생성
-                 }
-                 new_holder->priority = curr->priority;
-              }
-              temp = new_holder;
-           }	
-           intr_set_level (old_level);
+        struct thread *new_holder;
+        list_insert_ordered(&lock->holder->donations, &temp->d_elem, cmp_priority_donation, NULL);
+
+        int cnt = 0;
+        while (((temp -> wait_on_lock) != NULL ) && (cnt <= 8)) 
+        {
+            cnt += 1;
+            new_holder = temp->wait_on_lock->holder;
+            if (temp->priority > new_holder->priority) 
+            {
+                new_holder->priority = curr->priority;
+            }
+            temp = new_holder;
         }
-  
-     }
-     sema_down (&lock->semaphore);
-     lock->holder = curr;
-     curr->wait_on_lock = NULL;
-     preempt_priority();
-  }
+    }
+    sema_down (&lock->semaphore);
+    lock->holder = curr;
+    curr->wait_on_lock = NULL;
+    preempt_priority();
+}
 
 /* Tries to acquires LOCK and returns true if successful or false
    on failure.  The lock must not already be held by the current
