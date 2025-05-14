@@ -1,0 +1,16 @@
+FAIL
+Kernel panic in run: PANIC at ../../threads/thread.c:397 in thread_unblock(): assertion `is_thread (t)' failed.
+Call stack: 0x8004213931 0x8004206ff8 0x800420a445 0x8004216a64 0x8004216b11 0x8004210e34 0x8004216e2c 0x8004218e64 0x8004216d6d 0x8004206636 0x8004206783 0x8004206120
+Translation of call stack:
+0x0000008004213931: debug_panic (lib/kernel/debug.c:32)
+0x0000008004206ff8: thread_unblock (threads/thread.c:399)
+0x000000800420a445: lock_release (threads/synch.c:294)
+0x0000008004216a64: release_console (lib/kernel/console.c:103)
+0x0000008004216b11: vprintf (lib/kernel/console.c:125)
+0x0000008004210e34: printf (lib/stdio.c:80)
+0x0000008004216e2c: msg (tests/threads/tests.c:72)
+0x0000008004218e64: test_priority_donate_lower (tests/threads/priority-donate-lower.c:32)
+0x0000008004216d6d: run_test (tests/threads/tests.c:57)
+0x0000008004206636: run_task (threads/init.c:252)
+0x0000008004206783: run_actions (threads/init.c:297)
+0x0000008004206120: main (threads/init.c:125)
