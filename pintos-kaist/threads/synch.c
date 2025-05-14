@@ -213,8 +213,10 @@ lock_acquire (struct lock *lock) {
     struct thread *curr = thread_current ();	
     if (lock->holder != NULL) {
         curr->wait_on_lock = lock;
+      //  curr->wait_on_lock->semaphore.waiters
         struct thread *temp = curr;
         struct thread *new_holder;
+        //list_insert_ordered(&lock->holder->donations, &temp->d_elem, cmp_priority_donation, NULL);
         list_insert_ordered(&lock->holder->donations, &temp->d_elem, cmp_priority_donation, NULL);
 
         int cnt = 0;
@@ -263,42 +265,47 @@ lock_try_acquire (struct lock *lock) {
 
    ✅ TODO: 
     1. 현재 스레드가 소유하고 있던 락 해제 후 
+
+    락을 들고있던 기부받았던 우선순위에서 원래 우선순위로 복구
     // 락 대기하고 있던 스레드들 중 가장 높은 우선순위를 가진 스레드를 UNBLOCK
-    2. 락을 들고있던 기부받았던 우선순위에서 원래 우선순위로 복구
+    
+    
    */
 void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
-	enum intr_level old_level;
-   
-   // 현재 스레드가 소유하고 있던 락 해제
    struct thread *curr = thread_current();
-   struct thread *tmp = lock->holder;
    lock->holder = NULL;
 
-   // ASSERT(tmp != NULL);
+   if(!(list_empty(&curr->donations))) list_pop_front(&curr->donations);
+   curr->priority = curr->base_priority;
 
-	// old_level = intr_disable ();
-   // // 락을 기다리는 사람들은 어디서 찾음?
-   // // 기부받았던 우선순위에서 원래 우선순위로 복구
+   if(!(list_empty(&curr->donations)))
+   {
+      struct thread *unblockThread = list_entry (list_front (&curr->donations), struct thread, d_elem);
+      if(unblockThread->wait_on_lock->holder == curr)
+      {
+         curr->priority = unblockThread->priority;
+      }
+   }
 
-   // if((!list_empty(&tmp->donations)))
+
+   // TODO #1 만족
+   // if(!(list_empty(donaList)))
    // {
-   //    thread_unblock (list_entry (list_pop_front (&tmp->donations), struct thread, elem));
+   //    struct thread *unblockThread = list_pop_front(donaList);
+   //    thread_unblock(unblockThread);
+   //    lock->holder = unblockThread;
+   //    preempt_priority();
+   //    return;
    // }
-
-   // if(!(list_empty(&tmp->donations)))
-   //    curr->priority = (list_entry (list_front (&tmp->donations), struct thread, elem))->priority;
-   // else
-   //    curr->priority = curr->base_priority;
+   // if(!(list_empty(&curr->donations)))
+   //    list_pop_front(&curr->donations);
 
 	sema_up (&lock->semaphore);
    //preempt_priority();
-
-   //	intr_set_level (old_level);
-
 }
 
 /* Returns true if the current thread holds LOCK, false

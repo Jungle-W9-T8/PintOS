@@ -2,6 +2,7 @@
     "files.associations": {
         "synch.h": "c",
         "stdbool.h": "c",
-        "thread.h": "c"
+        "thread.h": "c",
+        "*.inc": "c"
     }
 }

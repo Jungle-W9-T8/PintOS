@@ -584,6 +584,7 @@ void
 thread_set_priority (int new_priority) 
 {
 	thread_current ()->priority = new_priority;
+	thread_current ()->base_priority = new_priority;
 	preempt_priority();		// 🔥 우선순위 하락 시 즉시 스케줄링 변경 여부 확인
 }
 
