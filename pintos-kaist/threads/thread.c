@@ -189,6 +189,7 @@ tid_t
 thread_create (const char *name, int priority,
 		thread_func *function, void *aux) {
 	struct thread *t;
+	//struct kernel_thread_frame *kf;
 	tid_t tid;
 
 	ASSERT (function != NULL);			// 실행할 함수는 NULL일 수 없음
@@ -215,14 +216,19 @@ thread_create (const char *name, int priority,
 	list_init(&t->donations);
 	t->wait_on_lock = NULL;
 	t->base_priority = t->priority;
-	/* 4. 스레드를 READY 상태로 전환하고 ready_list에 삽입 */
+
+	// userprog 확장을 위한 추가된 쓰레드 멤버변수 초기화 과정
+	t->parentThread = NULL;
+	list_init(&t->siblingThread);
+	t->next_fd = 0;
+
+	// 스레드를 READY 상태로 전환하고 ready_list에 삽입하기
 	thread_unblock (t);
 	
 	/** project1-Priority Scheduling */
 	if(t->priority > thread_current()->priority)
 		thread_yield();
 
-	// preempt_priority();	// 🔥 removed: thread_unblock already handles preemption logic
 
 	return tid;								// 생성된 스레드의 ID 반환
 }
