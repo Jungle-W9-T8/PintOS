@@ -49,6 +49,8 @@ process_create_initd (const char *file_name) {
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
+	// TODO : 입력 받은 file_name은 arg 내용 전부 담고 있습니다. 띄어쓰기를 기준으로 구분 할 수 있어야합니다.
+	// strtok_r를 활용 해 볼 수 있습니다 : 공식 슬라이드 언급
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
@@ -201,9 +203,17 @@ process_exec (void *f_name) {
  * does nothing. */
 int
 process_wait (tid_t child_tid UNUSED) {
+	// 힌트 번역
+	// process wait 제대로 구현하기 전까지, 차라리 무한루프를 만드세요.
+	// process wait 구현은 system call 강의 14분대에서 확인하세요.
+
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	while(1)
+	{
+
+	}
 	return -1;
 }
 
