@@ -8,6 +8,8 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 
+#include "threads/init.h"
+
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
@@ -41,6 +43,7 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f) {
 	// TODO: Your implementation goes here.
+	printf("syscall handler has called. \n");
 	switch(f->R.rax)
 	{
 	case SYS_HALT:
@@ -74,7 +77,7 @@ syscall_handler (struct intr_frame *f) {
 		printf("read has called!\n\n");
 		break;
 	case SYS_WRITE:
-		printf("write has called!\n\n");
+		write(f->R.rdi, f->R.rsi, f->R.rdx);
 		break;
 	case SYS_SEEK:
 		printf("seek has called!\n\n");
@@ -90,28 +93,26 @@ syscall_handler (struct intr_frame *f) {
 		break;
 	}
 
-	printf ("system call!\n");
-	thread_exit ();
+	//printf ("system call!\n");
+	//thread_exit ();
 }
 
 void halt(void)
 {
-	// TODO : Shutdown PintOS
-	// Use : shutdown_power_off(void)
+	power_off();
 }
 
 void exit(int status)
 {
-	// TODO : Exit Process.
-	// Use : thread_exit(void)
-	// should print message :
-	// Name of process: exit(status)
+	printf("Exiting : \n");
+	printf("Name of process: exit(%d)\n", status);
+	thread_exit();
 }
+
 tid_t fork (const char *thread_name)
 {
-	// TODO :
-	// Create child process and execute program
-	// corresponds to cmd_line on it
+	// TODO:
+	// Create child process and execute program corresponds to cmd_line on it
 }
 
 int exec(const char *cmd_line)
@@ -190,14 +191,21 @@ int read(int fd, void *buffer, unsigned size)
 	return 0;
 }
 
-int write(int fd, const void *buffer)
+int write(int fd, const void *buffer, unsigned size)
 {
-	// Writes size bytes form buffer to the open file fd.
-	// Returns the number of bytes actually written.
-	// If fd is 1, it writes to the console using putbuf(), otherwise write to the file using file_write() function.
-		// void putbuf(const char *buffer, size_t n)
+	if(fd == 1)
+	{
+		putbuf(buffer, size);
+	}
+	else
+	{
 		// off_t file_write(struct file *file, const void *buffer, off_t size)
-	return 1;
+		printf("CANNOT WRITE NOW! Implement first!\n");
+		// else 영역이 올바르게 구현되지 않았기에 -1 리턴하기.
+		return -1;
+	}
+	// TODO : return 값을 -1로 정의 할 여지를 고민해야함
+	return size;
 }
 
 void seek(int fd, unsigned position)
