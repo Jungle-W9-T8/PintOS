@@ -229,7 +229,6 @@ thread_create (const char *name, int priority,
 	if(t->priority > thread_current()->priority)
 		thread_yield();
 
-
 	return tid;								// 생성된 스레드의 ID 반환
 }
 
