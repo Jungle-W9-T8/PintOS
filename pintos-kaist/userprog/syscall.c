@@ -77,7 +77,8 @@ syscall_handler (struct intr_frame *f) {
 		printf("read has called!\n\n");
 		break;
 	case SYS_WRITE:
-		write(f->R.rdi, f->R.rsi, f->R.rdx);
+		if(is_user_vaddr(f->R.rdi) && is_user_vaddr(f->R.rsi) && is_user_vaddr(f->R.rdx))
+			write(f->R.rdi, f->R.rsi, f->R.rdx);		
 		break;
 	case SYS_SEEK:
 		printf("seek has called!\n\n");

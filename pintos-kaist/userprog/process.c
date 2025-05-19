@@ -27,6 +27,12 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
+void stack_update(int argc, char* argv[], void **stackptr)
+{
+
+}
+
+
 /* General process initializer for initd and other process. */
 static void
 process_init (void) {
@@ -42,18 +48,19 @@ tid_t
 process_create_initd (const char *file_name) {
 	char *fn_copy;
 	tid_t tid;
-
-	/* Make a copy of FILE_NAME.
-	 * Otherwise there's a race between the caller and load(). */
 	fn_copy = palloc_get_page (0);
+
+	char *ptr;
+	char *nextptr;
+
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
-	// TODO : 입력 받은 file_name은 arg 내용 전부 담고 있습니다. 띄어쓰기를 기준으로 구분 할 수 있어야합니다.
-	// strtok_r를 활용 해 볼 수 있습니다 : 공식 슬라이드 언급
+	// ptr = strtok_r(fn_copy, ' ', &nextptr);
 
-	/* Create a new thread to execute FILE_NAME. */
+	// file_name을 split 해야 할 것 같은뎅
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -67,7 +74,7 @@ initd (void *f_name) {
 #endif
 
 	process_init ();
-
+	// 기존에 매개변수로 넘겼던 f_name 대신 karg의 주소를 넘겨서 _exec에서 작성하도록 하기
 	if (process_exec (f_name) < 0)
 		PANIC("Fail to launch initd\n");
 	NOT_REACHED ();
@@ -167,6 +174,24 @@ process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
 
+	char *saveptr, *token;
+	char *args[32];
+	struct kernel_args *karg;
+	karg = palloc_get_page(0);
+
+	if(!karg)
+		return TID_ERROR;
+
+	int argc = 0;
+
+	for(token = strtok_r(f_name, " \t\r\n", &saveptr); token && argc < 31; token = strtok_r(NULL, " \t\r\n", &saveptr))
+	{
+		karg->argv[argc++] = token;	
+	}
+	karg->argv[argc] = NULL;
+	karg->argc = argc;
+
+
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
@@ -186,11 +211,34 @@ process_exec (void *f_name) {
 	if (!success)
 		return -1;
 
+	// setup stack here
+
+	// _if->rsp가 여기서 결정됩니다. 여기서 구현을 시도하세요..
+	// rsp에 스택 접근처를 만들었다. 이제 데이터를 추가하면서 +@ 할 것.
+	// file_name 그대로 던져지는걸 file open 시도하는거 보니까 여기에서 argument passing 만드는게 아닐수도..
+	// 우선 여기서 시도는 하겠지만, args 길이, 갯수에 따라 실행 결과 차이가 다를 것으로 보임
+	// 목표는 none 작동, 기대 값은 -single과 -many (2개 이상)이 같은곳에서 crash나는거
+	
+	/*
+		karg의 argv를 순회한다. NULL이 나올 때까지
+		_if.rsp = _if.rsp - (strlen(argv) + 1);
+		memcpy(_if.rsp, argv, strlen(argv));
+
+
+	*/
+
+	void *dummy = NULL;
+	_if.rsp -= sizeof(dummy);
+	memcpy((void *)_if.rsp, &dummy, sizeof(dummy));
+	_if.R.rdi = karg->argc;
+	_if.R.rsi = karg->argv;
+
+
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
 }
-
+ 
 
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an
@@ -423,7 +471,6 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
-
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
 

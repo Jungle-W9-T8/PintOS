@@ -14,6 +14,10 @@
         "new": "c",
         "ostream": "c",
         "sstream": "c",
-        "streambuf": "c"
+        "streambuf": "c",
+        "process.h": "c",
+        "inttypes.h": "c",
+        "directory.h": "c",
+        "debug.h": "c"
     }
 }
