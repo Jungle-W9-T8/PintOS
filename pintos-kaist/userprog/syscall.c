@@ -41,7 +41,6 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-	// 시스템콜 12개 만들어야 하는데 여기서 분기해야 함  
 	printf ("system call!\n");
 	thread_exit ();
 }
