@@ -1,0 +1,13 @@
+FAIL
+Kernel panic in run: PANIC at ../../lib/kernel/list.c:108 in list_next(): assertion `is_head (elem) || is_interior (elem)' failed.
+Call stack: 0x80042139d6 0x8004213c52 0x800420a389 0x8004216b09 0x8004216bb6 0x8004210ed9 0x8004216ed1 0x8004218cda 0x80042075fa
+Translation of call stack:
+0x00000080042139d6: debug_panic (lib/kernel/debug.c:32)
+0x0000008004213c52: list_next (lib/kernel/list.c:109)
+0x000000800420a389: lock_release (threads/synch.c:290 (discriminator 2))
+0x0000008004216b09: release_console (lib/kernel/console.c:103)
+0x0000008004216bb6: vprintf (lib/kernel/console.c:125)
+0x0000008004210ed9: printf (lib/stdio.c:80)
+0x0000008004216ed1: msg (tests/threads/tests.c:72)
+0x0000008004218cda: l_thread_func (tests/threads/priority-donate-sema.c:58)
+0x00000080042075fa: kernel_thread (threads/thread.c:671)
