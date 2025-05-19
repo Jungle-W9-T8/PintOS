@@ -280,12 +280,13 @@ lock_release (struct lock *lock) {
    struct list_elem *e;
    lock->holder = NULL;
    
-   for (e = list_begin (&curr->donations); e != list_end (&curr->donations); e = list_next(e))
-   {
-      struct thread *donaItem = list_entry (list_front (&curr->donations), struct thread, d_elem);
-      if(donaItem->wait_on_lock == lock)
-         list_remove(e);
-   }
+   for (e = list_begin(&curr->donations); e != list_end(&curr->donations);) {
+      struct thread *donaItem = list_entry(e, struct thread, d_elem);
+      struct list_elem *next = list_next(e);  // next를 미리 저장
+      if (donaItem->wait_on_lock == lock)
+          list_remove(e);
+      e = next;  // 항상 next로 이동
+  }
 
    recal_priority(curr);
    sema_up (&lock->semaphore);
