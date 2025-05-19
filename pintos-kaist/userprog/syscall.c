@@ -43,14 +43,13 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f) {
 	// TODO: Your implementation goes here.
-	printf("syscall handler has called. \n");
 	switch(f->R.rax)
 	{
 	case SYS_HALT:
 		printf("half has called!\n\n");
 		break;
 	case SYS_EXIT:
-		printf("exit has called!\n\n");
+		exit(0);
 		break;
 	case SYS_FORK:
 		printf("fork has called!\n\n");
@@ -105,8 +104,8 @@ void halt(void)
 
 void exit(int status)
 {
-	printf("Exiting : \n");
-	printf("Name of process: exit(%d)\n", status);
+	struct thread *curr = thread_current();
+	printf("%s: exit(%d)\n", curr->name, status);
 	thread_exit();
 }
 

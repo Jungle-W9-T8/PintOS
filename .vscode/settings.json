@@ -18,6 +18,7 @@
         "process.h": "c",
         "inttypes.h": "c",
         "directory.h": "c",
-        "debug.h": "c"
+        "debug.h": "c",
+        "stdlib.h": "c"
     }
 }

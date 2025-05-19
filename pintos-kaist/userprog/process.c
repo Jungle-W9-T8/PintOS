@@ -173,28 +173,23 @@ int
 process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
-
+	
+	char *tmp_fileName = palloc_get_page(PAL_USER | PAL_ZERO);
 	char *saveptr, *token;
-	char *args[32];
-	struct kernel_args *karg;
-	karg = palloc_get_page(0);
-
-	if(!karg)
+	char *args_ptr[32] = {NULL};
+	
+	if(tmp_fileName == NULL)
 		return TID_ERROR;
 
+	strlcpy(tmp_fileName, file_name, PGSIZE);
 	int argc = 0;
 
 	for(token = strtok_r(f_name, " \t\r\n", &saveptr); token && argc < 31; token = strtok_r(NULL, " \t\r\n", &saveptr))
 	{
-		karg->argv[argc++] = token;	
+		args_ptr[argc] = token;
+		argc++;
 	}
-	karg->argv[argc] = NULL;
-	karg->argc = argc;
 
-
-	/* We cannot use the intr_frame in the thread structure.
-	 * This is because when current thread rescheduled,
-	 * it stores the execution information to the member. */
 	struct intr_frame _if;
 	_if.ds = _if.es = _if.ss = SEL_UDSEG;
 	_if.cs = SEL_UCSEG;
@@ -206,35 +201,49 @@ process_exec (void *f_name) {
 	/* And then load the binary */
 	success = load (file_name, &_if);
 
+	/* 스택 포인터, karg->argc, karg->argv 가 이미 정의되어 있다고 가정 */
+char *argv_u[32];   /* argc 최대 32라 가정 */
+
+/* 1) 문자열을 역순으로 스택에 복사하고, 복사한 위치(=유저 스택 어드레스)를 argv_u에 저장 */
+
+// 페이지 경계에 맞닿는 상황을 제거해야한다. 그래서 rsp를 시작 전에 좀 더 내려서 시작하게끔 조정
+_if.rsp -= 8;
+
+for (int i = argc - 1; i >= 0; i--) {
+    int len = strlen(args_ptr[i]) + 1;
+    _if.rsp -= len;                         // 스택 포인터 내리고
+    memcpy((void*)_if.rsp, args_ptr[i], len); 
+    argv_u[i] = (char*)_if.rsp;            // 복사된 문자열의 주소 저장
+}
+
+/* 2) 스택 워드 정렬 (필요하다면) */
+_if.rsp = (uintptr_t)_if.rsp & ~0xF;
+
+/* 3) NULL sentinel */
+_if.rsp -= sizeof(char*);
+ *(char**)_if.rsp = NULL;
+
+/* 4) argv_u[]에 모아둔 주소를 스택에 푸시 */
+for (int i = argc - 1; i >= 0; i--) {
+    _if.rsp -= sizeof(char*);
+    *(char**)_if.rsp = argv_u[i];
+}
+
+_if.R.rsi = _if.rsp;
+
+_if.rsp -= sizeof(void*);
+*(void**)_if.rsp = 0;   /* fake return address */
+
+_if.R.rdi = argc;
+
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
+	palloc_free_page (tmp_fileName);
+	
+
 	if (!success)
 		return -1;
 
-	// setup stack here
-
-	// _if->rsp가 여기서 결정됩니다. 여기서 구현을 시도하세요..
-	// rsp에 스택 접근처를 만들었다. 이제 데이터를 추가하면서 +@ 할 것.
-	// file_name 그대로 던져지는걸 file open 시도하는거 보니까 여기에서 argument passing 만드는게 아닐수도..
-	// 우선 여기서 시도는 하겠지만, args 길이, 갯수에 따라 실행 결과 차이가 다를 것으로 보임
-	// 목표는 none 작동, 기대 값은 -single과 -many (2개 이상)이 같은곳에서 crash나는거
-	
-	/*
-		karg의 argv를 순회한다. NULL이 나올 때까지
-		_if.rsp = _if.rsp - (strlen(argv) + 1);
-		memcpy(_if.rsp, argv, strlen(argv));
-
-
-	*/
-
-	void *dummy = NULL;
-	_if.rsp -= sizeof(dummy);
-	memcpy((void *)_if.rsp, &dummy, sizeof(dummy));
-	_if.R.rdi = karg->argc;
-	_if.R.rsi = karg->argv;
-
-
-	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
 }
@@ -249,6 +258,13 @@ process_exec (void *f_name) {
  *
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
+int isWaitOn = 1;
+
+void processOff()
+{
+	isWaitOn = 0;
+}
+
 int
 process_wait (tid_t child_tid UNUSED) {
 	// 힌트 번역
@@ -258,9 +274,9 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	while(1)
+	while(isWaitOn)
 	{
-
+		
 	}
 	return -1;
 }

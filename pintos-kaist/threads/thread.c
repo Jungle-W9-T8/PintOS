@@ -212,7 +212,7 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;                   // 스택 세그먼트
 	t->tf.cs = SEL_KCSEG;                   // 코드 세그먼트
 	t->tf.eflags = FLAG_IF;                 // 인터럽트 플래그 설정
-
+	
 	list_init(&t->donations);
 	t->wait_on_lock = NULL;
 	t->base_priority = t->priority;
@@ -487,6 +487,7 @@ thread_exit (void) {
 	ASSERT (!intr_context ());
 
 #ifdef USERPROG
+	processOff();
 	process_exit ();
 #endif
 
