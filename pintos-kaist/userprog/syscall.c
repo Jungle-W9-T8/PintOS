@@ -9,6 +9,8 @@
 #include "intrinsic.h"
 
 #include "threads/init.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -46,10 +48,10 @@ syscall_handler (struct intr_frame *f) {
 	switch(f->R.rax)
 	{
 	case SYS_HALT:
-		printf("half has called!\n\n");
+		halt();
 		break;
 	case SYS_EXIT:
-		exit(0);
+		exit(f->R.rdi);
 		break;
 	case SYS_FORK:
 		printf("fork has called!\n\n");
@@ -61,13 +63,13 @@ syscall_handler (struct intr_frame *f) {
 		printf("wait has called!\n\n");
 		break;
 	case SYS_CREATE:
-		printf("create has called!\n\n");
+		create(f->R.rdi, f->R.rsi);
 		break;
 	case SYS_REMOVE:
 		printf("remove has called!\n\n");
 		break;
 	case SYS_OPEN:
-		printf("open has called!\n\n");
+		open(f->R.rdi);
 		break;
 	case SYS_FILESIZE:
 		printf("filesize has called!\n\n");
@@ -111,8 +113,15 @@ void exit(int status)
 
 tid_t fork (const char *thread_name)
 {
+	struct thread *curr = thread_current();	
+	tid_t newThread = thread_create(thread_name, PRI_DEFAULT, curr->tf.R.rdi, curr->tf.R.rsi);
+	if(newThread < 0)
+		return TID_ERROR;
+
+	
+	
 	// TODO:
-	// Create child process and execute program corresponds to cmd_line on it
+	// Create child process and execute program corresponds to cmd_line on it 자식 프로세스를 생성하고 해당 cmd_line에 해당하는 프로그램을 실행하십시오.
 }
 
 int exec(const char *cmd_line)
@@ -150,10 +159,7 @@ int wait(tid_t pid)
 }
 bool create(const char *file, unsigned initial_size)
 {
-	// Create file which have size of initial_size
-	// use bool filesys_create const chr *name, off_t initial_size.
-	// return true if it is succeeded or false if it is not.
-	return false;
+	return filesys_create(file, initial_size);
 }
 
 bool remove(const char *file)
@@ -167,14 +173,27 @@ bool remove(const char *file)
 
 int open(const char *file)
 {
-	// Open the file corresponds to path in "file".
-	// Return its fd.
-	// use strung file *filesys_open(const char *name).
-	return 1;
+	struct thread *curr = thread_current();
+	struct file *targetFile = filesys_open(file);
+	if(targetFile == NULL) return -1;
+
+	int i = curr->next_fd;
+
+	curr->fd_table[i] = targetFile;
+	curr->next_fd += 1;
+
+	// 생각해보니.. fd를 64개 다쓰면? 그리고, 재활용가능한 fd가 있다면?
+	// open msg 수정 필요
+	printf("open file: %s\n",file);
+
+	// 연결된 번호를 반환하도록 하기
+	return i;
 }
 
 int filesize(int fd)
 {
+	//fd를 통해 파일을 알아낸 다음, 그걸로 file_length의 매개변수를 투입시킨다. 그리고 해당 값을 리턴시킨다.
+	//struct off_t a = file_length()
 	// Return the size, in bytes, of the file open as fd.
 	// Use off_t file_length(struct file *file).
 	return 1;
@@ -199,10 +218,11 @@ int write(int fd, const void *buffer, unsigned size)
 	}
 	else
 	{
+		// fd는 open 후 값을 그대로 끌어온다고 가정. 즉, fd는 바로 해당 파일을 가리킨다.
+		struct file *targetWrite = thread_current()->fd_table[fd];
+		int writed = file_write(targetWrite, buffer, size);
 		// off_t file_write(struct file *file, const void *buffer, off_t size)
-		printf("CANNOT WRITE NOW! Implement first!\n");
-		// else 영역이 올바르게 구현되지 않았기에 -1 리턴하기.
-		return -1;
+
 	}
 	// TODO : return 값을 -1로 정의 할 여지를 고민해야함
 	return size;

@@ -101,10 +101,10 @@ struct thread {
 	struct list_elem elem;              /* List element. */
 	struct list_elem d_elem;            /* Donations List element. */
 
+	struct file *fd_table[64];
 	struct thread *parentThread;
 	struct list siblingThread;
 	struct list_elem childThread;
-	struct file **fbt;
 	int next_fd;
 
 #ifdef USERPROG

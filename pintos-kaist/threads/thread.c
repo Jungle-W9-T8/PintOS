@@ -216,6 +216,16 @@ thread_create (const char *name, int priority,
 	list_init(&t->donations);
 	t->wait_on_lock = NULL;
 	t->base_priority = t->priority;
+	
+	struct file *stdin;
+	struct file *stdout;
+	struct file *stderr;
+
+	t->fd_table[0] = stdin;
+	t->fd_table[1] = stdout;
+	t->fd_table[2] = stderr;
+	t->next_fd = 3;
+
 
 	// userprog 확장을 위한 추가된 쓰레드 멤버변수 초기화 과정
 	t->parentThread = NULL;
@@ -488,6 +498,14 @@ thread_exit (void) {
 
 #ifdef USERPROG
 	processOff();
+	struct thread *curr = thread_current();
+	for(int i = 0; i < 64; i++)
+	{
+		// free?
+		// 여기서하는거 아니고 close 해야하는거 아니야?
+		curr->fd_table[i] = NULL;
+	}
+
 	process_exit ();
 #endif
 

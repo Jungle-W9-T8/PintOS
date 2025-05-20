@@ -19,6 +19,14 @@
         "inttypes.h": "c",
         "directory.h": "c",
         "debug.h": "c",
-        "stdlib.h": "c"
+        "stdlib.h": "c",
+        "main.h": "c",
+        "cstdlib": "c",
+        "lib.h": "c",
+        "off_t.h": "c",
+        "gdt.h": "c",
+        "intrinsic.h": "c",
+        "flags.h": "c",
+        "init.h": "c"
     }
 }
