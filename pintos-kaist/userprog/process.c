@@ -26,6 +26,7 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
+void construct_stack(const char* file_name, struct intr_frame *if__);
 
 /* General process initializer for initd and other process. */
 static void
@@ -40,7 +41,7 @@ process_init (void) {
  * Notice that THIS SHOULD BE CALLED ONCE. */
 tid_t
 process_create_initd (const char *file_name) {
-	char *fn_copy;
+	char *fn_copy, save_ptr;
 	tid_t tid;
 
 	/* Make a copy of FILE_NAME.
@@ -50,8 +51,14 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	/* 파일명 추출 */
+	char *file_name_copy=malloc(sizeof(char)*(strlen(file_name)+1));
+	if (file_name_copy == NULL) return NULL;
+	strlcpy(file_name_copy, file_name, (strlen(file_name)+1)); // file_name_copy = file_name+\0
+	char *file_name_first_word = strtok_r(file_name_copy, " ", &save_ptr); // file_name_copy " "기준으로 분리한 맨 앞 토큰
+
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (file_name_first_word, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -163,6 +170,7 @@ error:
 int
 process_exec (void *f_name) {
 	char *file_name = f_name;
+	char *tokens;
 	bool success;
 
 	/* We cannot use the intr_frame in the thread structure.
@@ -199,11 +207,23 @@ process_exec (void *f_name) {
  *
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
+
+int isWaitOn = 1; // 전역변수로써 선언
+
+void processOff()
+{
+	isWaitOn = 0;
+}
+
 int
 process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	while(isWaitOn)
+	{
+
+	}
 	return -1;
 }
 
@@ -328,6 +348,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	off_t file_ofs;
 	bool success = false;
 	int i;
+	char *save_ptr;
 
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
@@ -335,8 +356,14 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate (thread_current ());
 
+	/* 파일명 추출 */
+	char *file_name_copy=malloc(sizeof(char)*(strlen(file_name)+1));
+	if (file_name_copy == NULL) return NULL;
+	strlcpy(file_name_copy, file_name, (strlen(file_name)+1)); // file_name_copy = file_name+\0
+	char *file_name_first_word = strtok_r(file_name_copy, " ", &save_ptr); // file_name_copy " "기준으로 분리한 맨 앞 토큰
+
 	/* Open executable file. */
-	file = filesys_open (file_name);
+	file = filesys_open (file_name_first_word);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
@@ -414,8 +441,8 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
 
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	/* 스택에 인자 저장 */
+	construct_stack(file_name, if_);
 
 	success = true;
 
@@ -425,6 +452,62 @@ done:
 	return success;
 }
 
+void construct_stack(const char* file_name, struct intr_frame *if__) {
+    int argc = 0;
+    int idx;
+    char **argv;
+	char *file_name_copy = palloc_get_page(0);
+    char *token;
+	char *tokens[100];
+	char *tokens_addr[32];
+	char *save_ptr;
+    int cur_arg_len;
+	int total_arg_len;
+
+    // 인자 개수 계산 및 인자별 시작 주소, 인자 문자열 저장
+    strlcpy(file_name_copy, file_name, strlen(file_name) + 1);
+
+    token = strtok_r(file_name_copy, " ", &save_ptr);
+	
+	// 인자들을 배열에 저장
+	while (token != NULL) {
+		tokens[argc++] = token;
+		//token = strtok_r(file_name_copy, " ", &save_ptr); 
+		token = strtok_r(NULL, " ", &save_ptr); 
+	}
+
+	if__->rsp -= 8;
+
+	// 인자들을 역순으로 스택에 저장
+	for (int i=argc-1; i>=0 ;i--) {
+		size_t arg_len = (strlen(tokens[i]) + 1);
+		if__->rsp -= arg_len;
+		memcpy((void*)if__->rsp, tokens[i], arg_len);
+
+		tokens_addr[i] = (char*)if__->rsp; // argv 포인터들을 배열에 저장
+	}
+
+	//
+	if__->rsp = ((uintptr_t)(if__->rsp) & ~0x0F); 
+
+    // NULL 포인터 sentinel
+    if__->rsp -= sizeof(char *);
+    *(char **)if__->rsp = NULL;
+
+    // argv 포인터들을 스택에 저장
+    for (idx = argc - 1; idx >= 0; idx--) {
+        if__->rsp -= sizeof(char *);
+        *(char **)if__->rsp = tokens_addr[idx];
+    }
+
+	if__->R.rdi = argc;
+	if__->R.rsi = if__->rsp;
+	
+    // fake return address (0)
+    if__->rsp -= sizeof(void *);
+    *(void **)if__->rsp = 0;
+    //free(argv);
+}
 
 /* Checks whether PHDR describes a valid, loadable segment in
  * FILE and returns true if so, false otherwise. */
