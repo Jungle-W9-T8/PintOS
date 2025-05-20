@@ -77,7 +77,15 @@ syscall_handler (struct intr_frame *f) {
 		printf("remove has called!\n\n");
 		break;
 	case SYS_OPEN:
-		f->R.rax = open(f->R.rdi);
+	if(f->R.rdi != NULL)
+	{
+		if(is_user_vaddr(f->R.rdi) && is_user_vaddr(f->R.rsi))
+			f->R.rax = open(f->R.rdi);
+		else
+			exit(-1);
+	}
+	else
+		exit(-1);
 		break;
 	case SYS_FILESIZE:
 		f->R.rax = filesize(f->R.rdi);
@@ -172,8 +180,7 @@ bool create(const char *file, unsigned initial_size)
 	if (pml4_get_page(thread_current()->pml4, file) == NULL) exit(-1);
 	if(strlen(file) == 0) exit(-1);
 	if(strlen(file) > 128) return false; // create-long 테스트 케이스 대비
-
-	if(is_user_vaddr(&file)) return filesys_create(file, initial_size);
+	return filesys_create(file, initial_size);
 }
 
 bool remove(const char *file)
@@ -187,6 +194,9 @@ bool remove(const char *file)
 
 int open(const char *file)
 {
+	if (pml4_get_page(thread_current()->pml4, file) == NULL) exit(-1);
+	//if(strlen(file) == 0) exit(-1);
+
 	struct thread *curr = thread_current();
 	struct file *targetFile = filesys_open(file);
 	if(targetFile == NULL) return -1;
@@ -197,9 +207,6 @@ int open(const char *file)
 	curr->next_fd += 1;
 
 	// 생각해보니.. fd를 64개 다쓰면? 그리고, 재활용가능한 fd가 있다면?
-	// open msg 수정 필요
-	printf("open file: %s\n",file);
-
 	// 연결된 번호를 반환하도록 하기
 	return i;
 }
