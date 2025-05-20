@@ -230,7 +230,6 @@ thread_create (const char *name, int priority,
 	// userprog 확장을 위한 추가된 쓰레드 멤버변수 초기화 과정
 	t->parentThread = NULL;
 	list_init(&t->siblingThread);
-	t->next_fd = 0;
 
 	// 스레드를 READY 상태로 전환하고 ready_list에 삽입하기
 	thread_unblock (t);

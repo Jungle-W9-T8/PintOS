@@ -63,23 +63,31 @@ syscall_handler (struct intr_frame *f) {
 		printf("wait has called!\n\n");
 		break;
 	case SYS_CREATE:
-		create(f->R.rdi, f->R.rsi);
+	if(f->R.rdi != NULL)
+	{
+		if(is_user_vaddr(f->R.rdi) && is_user_vaddr(f->R.rsi))
+			f->R.rax = create(f->R.rdi, f->R.rsi);
+		else
+			exit(-1);
+	}
+	else
+		exit(-1);
 		break;
 	case SYS_REMOVE:
 		printf("remove has called!\n\n");
 		break;
 	case SYS_OPEN:
-		open(f->R.rdi);
+		f->R.rax = open(f->R.rdi);
 		break;
 	case SYS_FILESIZE:
-		printf("filesize has called!\n\n");
+		f->R.rax = filesize(f->R.rdi);
 		break;
 	case SYS_READ:
 		printf("read has called!\n\n");
 		break;
 	case SYS_WRITE:
 		if(is_user_vaddr(f->R.rdi) && is_user_vaddr(f->R.rsi) && is_user_vaddr(f->R.rdx))
-			write(f->R.rdi, f->R.rsi, f->R.rdx);		
+			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);		
 		break;
 	case SYS_SEEK:
 		printf("seek has called!\n\n");
@@ -94,6 +102,8 @@ syscall_handler (struct intr_frame *f) {
 		printf("SERIOUS ERROR!!\n\n");
 		break;
 	}
+
+
 
 	//printf ("system call!\n");
 	//thread_exit ();
@@ -159,7 +169,11 @@ int wait(tid_t pid)
 }
 bool create(const char *file, unsigned initial_size)
 {
-	return filesys_create(file, initial_size);
+	if (pml4_get_page(thread_current()->pml4, file) == NULL) exit(-1);
+	if(strlen(file) == 0) exit(-1);
+	if(strlen(file) > 128) return false; // create-long 테스트 케이스 대비
+
+	if(is_user_vaddr(&file)) return filesys_create(file, initial_size);
 }
 
 bool remove(const char *file)
@@ -192,11 +206,13 @@ int open(const char *file)
 
 int filesize(int fd)
 {
+	off_t fileSize = file_length(thread_current()->fd_table[fd]);
+	if(fileSize == 0) return -1;
 	//fd를 통해 파일을 알아낸 다음, 그걸로 file_length의 매개변수를 투입시킨다. 그리고 해당 값을 리턴시킨다.
 	//struct off_t a = file_length()
 	// Return the size, in bytes, of the file open as fd.
 	// Use off_t file_length(struct file *file).
-	return 1;
+	return fileSize;
 }
 
 int read(int fd, void *buffer, unsigned size)
