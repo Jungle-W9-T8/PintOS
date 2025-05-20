@@ -47,7 +47,8 @@ process_init (void) {
 tid_t
 process_create_initd (const char *file_name) {
 	char *fn_copy;
-		tid_t tid;
+	char *threadName = palloc_get_page(PAL_ZERO);
+	tid_t tid;
 	fn_copy = palloc_get_page (0);
 
 	char *ptr;
@@ -56,14 +57,20 @@ process_create_initd (const char *file_name) {
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
-	// ptr = strtok_r(fn_copy, ' ', &nextptr);
+	strlcpy (threadName, file_name, PGSIZE);
 
-// file_name을 split 해야 할 것 같은뎅
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	ptr = strtok_r(threadName, " \t\r\n", &nextptr);
+
+	tid = thread_create (ptr, PRI_DEFAULT, initd, fn_copy);
 	
 	if (tid == TID_ERROR)
-			palloc_free_page (fn_copy);
-			return tid;
+	{
+		palloc_free_page (fn_copy);
+		palloc_free_page(threadName);
+	}
+
+
+	return tid;
 }
 
 /* A thread function that launches first user process. */

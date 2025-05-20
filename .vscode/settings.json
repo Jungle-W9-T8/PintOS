@@ -27,6 +27,9 @@
         "gdt.h": "c",
         "intrinsic.h": "c",
         "flags.h": "c",
-        "init.h": "c"
+        "init.h": "c",
+        "string_view": "c",
+        "atomic": "c",
+        "timer.h": "c"
     }
 }
