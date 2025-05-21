@@ -128,7 +128,10 @@ void thread_awake (int64_t global_ticks);
 void update_closest_tick (int64_t ticks);
 int64_t closest_tick (void);
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
-bool cmp_priority_donations(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool cmp_priority_only(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool cmp_priority_donation(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+void preempt_priority(void);
+bool cmp_sema_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 void thread_init (void);
 void thread_start (void);
@@ -138,12 +141,17 @@ void thread_print_stats (void);
 
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
-
+bool cmp_wakeTick(struct list_elem *a, struct list_elem *b, void *aux UNUSED);
 void thread_block (void);
 void thread_unblock (struct thread *);
 
+// 다른 곳에서도 사용처를 만들어야 하여 헤더에 선언.
+void preempt_priority(void);
+
 struct thread *thread_current (void);
 tid_t thread_tid (void);
+void thread_sleep(int64_t ticks);
+void thread_wakeUp(int64_t curTick);
 const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
@@ -158,7 +166,5 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
-
-void preempt_priority(void);
 
 #endif /* threads/thread.h */

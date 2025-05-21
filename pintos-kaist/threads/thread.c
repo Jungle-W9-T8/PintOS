@@ -77,7 +77,6 @@ static tid_t allocate_tid (void);
 /* ------------------ Ready/Sleep Queue Compare Functions ------------------ */
 bool cmp_priority (const struct list_elem *a, const struct list_elem *b, void *aux);
 static bool cmp_wakeup_tick (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
-void preempt_priority(void);
 
 /* ------------------ Debug Utilities ------------------ */
 // static void debug_print_thread_lists (void);    // 디버깅용 리스트 출력 함수
@@ -117,6 +116,7 @@ thread_init (void) {
 	list_init (&sleep_list);                 // ⏰ sleep 상태 스레드 리스트 초기화
 	list_init (&wait_list);					 // ❓
 	list_init (&destruction_req);            // 제거 요청 대기 스레드 리스트 초기화
+	
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();      // 현재 실행 중인 스레드를 thread 구조체로 변환
@@ -212,6 +212,9 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;                   // 코드 세그먼트
 	t->tf.eflags = FLAG_IF;                 // 인터럽트 플래그 설정
 
+	list_init(&t->donations);
+	t->wait_on_lock = NULL;
+	t->base_priority = t->priority;
 	/* 4. 스레드를 READY 상태로 전환하고 ready_list에 삽입 */
 	thread_unblock (t);
 	
@@ -419,7 +422,7 @@ thread_unblock (struct thread *t)
  * 주의:
  * - intr_context() 내부에선 yield를 하면 안 되므로 반드시 조건 체크
  * ============================================================= */
-void
+void 
 preempt_priority(void) 
 {
     if (!intr_context() && !list_empty(&ready_list))
@@ -543,7 +546,16 @@ cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNU
 }
 
 bool
-cmp_priority_donations(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) 
+cmp_priority_only(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) 
+{
+	struct thread *ta = list_entry(a, struct thread, elem);		// a 요소를 thread 구조체로 변환
+	struct thread *tb = list_entry(b, struct thread, elem);		// b 요소를 thread 구조체로 변환
+
+	return ta->priority > tb->priority;				 // 우선순위가 높은 (값이 큰) 스레드를 먼저 배치
+}
+
+bool
+cmp_priority_donation(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) 
 {
 	struct thread *ta = list_entry(a, struct thread, d_elem);		// a 요소를 thread 구조체로 변환
 	struct thread *tb = list_entry(b, struct thread, d_elem);		// b 요소를 thread 구조체로 변환
@@ -572,7 +584,11 @@ cmp_priority_donations(const struct list_elem *a, const struct list_elem *b, voi
 void
 thread_set_priority (int new_priority) 
 {
-	thread_current ()->priority = new_priority;
+	struct thread *thr = thread_current();
+
+	//thread_current ()->priority = new_priority;
+	thr->base_priority = new_priority;
+	recal_priority(thr);
 	preempt_priority();		// 🔥 우선순위 하락 시 즉시 스케줄링 변경 여부 확인
 }
 
@@ -660,6 +676,7 @@ kernel_thread (thread_func *function, void *aux) {
 /* Does basic initialization of T as a blocked thread named
    NAME. 
    
+   // Todo Completed May 13
    ✅ TODO: priority donation을 위해 필요한 필드 초기화
      1. donations 리스트 초기화 - 우선순위 기부 내역을 관리하기 위한 리스트
      2. wait_on_lock 초기화 - 대기 중인 락의 주소를 추적하기 위한 포인터
@@ -682,6 +699,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->wait_on_lock = NULL;
 	t->base_priority = priority;
 	list_init(&t->donations);
+
 	
 }
 
