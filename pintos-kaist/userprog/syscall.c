@@ -7,12 +7,14 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "threads/vaddr.h"
 
 #include "threads/init.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *f);
-// void halt (void);
+bool is_valid_user_pointer(const void *uaddr);
+void halt (void);
 void exit (int status);
  int write (int fd, const void *buffer, unsigned size);
 
@@ -78,7 +80,6 @@ syscall_handler (struct intr_frame *f) {
 
 	switch (syscall_num) {
 		case SYS_HALT:
-			//halt ();
 			power_off();
 			break;
 
@@ -100,6 +101,8 @@ syscall_handler (struct intr_frame *f) {
 			break;
 
 		case SYS_CREATE:
+
+			f->R.rax = create(f->R.rdi, f->R.rsi);
 			// f->R.rax = create ((const char *) arg1, (unsigned) arg2);
 			break;
 
@@ -143,15 +146,14 @@ syscall_handler (struct intr_frame *f) {
 	// thread_exit ();
 }
 
-// void halt (void) {
-
-// }
+void halt (void) {
+	power_off();
+}
 
  void exit (int status) {
-				struct thread *curr = thread_current();
-			printf("%s: exit(%d)\n", curr->name, status);
-			thread_exit();
-			
+	struct thread *curr = thread_current();
+	printf("%s: exit(%d)\n", curr->name, status);
+	thread_exit();
 }
 
 // pid_t fork (const char *thread_name) {
@@ -166,9 +168,11 @@ syscall_handler (struct intr_frame *f) {
 
 // }
 
-// bool create (const char *file, unsigned initial_size) {
-
-// }
+bool create (const char *file, unsigned initial_size) {		
+	if (!is_valid_user_pointer(file)) exit(-1);
+	if ((file == NULL) || !(pml4_get_page(thread_current()->pml4, file))) exit(-1); 
+	return filesys_create(file, initial_size);
+}
 
 // bool remove (const char *file) {
 
@@ -187,15 +191,16 @@ syscall_handler (struct intr_frame *f) {
 // }
 
 int write (int fd, const void *buffer, unsigned size) {
-				// 파일 디스크립터가 STDOUT(1)일 경우, 콘솔에 출력
-			if (fd == 1) {
-				putbuf(buffer, size);
-				// f->R.rax = size;  // 출력한 바이트 수 반환
-			} else {
-				// f->R.rax = -1;  // 현재는 STDOUT만 지원
-				return -1;
-			}
-			return size;
+	// 파일 디스크립터가 STDOUT(1)일 경우, 콘솔에 출력
+	if (fd == 1) {
+		putbuf(buffer, size);
+	} 
+	// f->R.rax = size;  // 출력한 바이트 수 반환
+	else {
+		// f->R.rax = -1;  // 현재는 STDOUT만 지원
+		return -1;
+	}
+	return size;
 }
  
 // void seek (int fd, unsigned position) {
@@ -253,3 +258,7 @@ int write (int fd, const void *buffer, unsigned size) {
 // int umount (const char *path) {
 
 // }
+
+bool is_valid_user_pointer(const void *uaddr) {
+  return (uaddr != NULL && is_user_vaddr(uaddr));
+}
