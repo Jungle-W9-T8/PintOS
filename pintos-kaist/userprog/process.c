@@ -46,30 +46,25 @@ process_init (void) {
  * Notice that THIS SHOULD BE CALLED ONCE. */
 tid_t
 process_create_initd (const char *file_name) {
-	char *fn_copy;
+	char *fn_copy, *ptr, *nextptr;
 	char *threadName = palloc_get_page(PAL_ZERO);
 	tid_t tid;
 	fn_copy = palloc_get_page (0);
 
-	char *ptr;
-	char *nextptr;
-
 	if (fn_copy == NULL)
 		return TID_ERROR;
+
 	strlcpy (fn_copy, file_name, PGSIZE);
-	strlcpy (threadName, file_name, PGSIZE);
+	strlcpy (threadName, file_name, PGSIZE); 
 
 	ptr = strtok_r(threadName, " \t\r\n", &nextptr);
-
 	tid = thread_create (ptr, PRI_DEFAULT, initd, fn_copy);
 	
 	if (tid == TID_ERROR)
 	{
-		palloc_free_page (fn_copy);
+		palloc_free_page(fn_copy);
 		palloc_free_page(threadName);
 	}
-
-
 	return tid;
 }
 
@@ -181,14 +176,12 @@ process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
 	
-	char *tmp_fileName = palloc_get_page(PAL_USER | PAL_ZERO);
 	char *saveptr, *token;
 	char *args_ptr[32] = {NULL};
 	
-	if(tmp_fileName == NULL)
+	if(f_name == NULL)
 		return TID_ERROR;
 
-	strlcpy(tmp_fileName, file_name, PGSIZE);
 	int argc = 0;
 
 	for(token = strtok_r(f_name, " \t\r\n", &saveptr); token && argc < 31; token = strtok_r(NULL, " \t\r\n", &saveptr))
@@ -243,10 +236,7 @@ _if.rsp -= sizeof(void*);
 
 _if.R.rdi = argc;
 
-	/* If load failed, quit. */
 	palloc_free_page (file_name);
-	palloc_free_page (tmp_fileName);
-	
 
 	if (!success)
 		return -1;
@@ -255,6 +245,15 @@ _if.R.rdi = argc;
 	NOT_REACHED ();
 }
  
+
+
+int isWaitOn = 1;
+
+void processOff()
+{
+	isWaitOn = 0;
+}
+
 
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an
@@ -265,13 +264,6 @@ _if.R.rdi = argc;
  *
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
-int isWaitOn = 1;
-
-void processOff()
-{
-	isWaitOn = 0;
-}
-
 int
 process_wait (tid_t child_tid UNUSED) {
 	// 힌트 번역
