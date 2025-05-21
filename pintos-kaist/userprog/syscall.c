@@ -88,20 +88,24 @@ syscall_handler (struct intr_frame *f) {
 			exit(-1);
 			break;
 	case SYS_FILESIZE:
-		f->R.rax = filesize(f->R.rdi);
+		if(is_user_vaddr(f->R.rdi))
+			f->R.rax = filesize(f->R.rdi);
 		break;
 	case SYS_READ:
-		printf("read has called!\n\n");
+		if(is_user_vaddr(f->R.rdi) && is_user_vaddr(f->R.rsi) && is_user_vaddr(f->R.rdx))
+			f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);		
 		break;
 	case SYS_WRITE:
 		if(is_user_vaddr(f->R.rdi) && is_user_vaddr(f->R.rsi) && is_user_vaddr(f->R.rdx))
 			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);		
 		break;
 	case SYS_SEEK:
-		printf("seek has called!\n\n");
+		if(is_user_vaddr(f->R.rdi) && is_user_vaddr(f->R.rsi))
+			seek(f->R.rdi, f->R.rsi);
 		break;
 	case SYS_TELL:
-		printf("tell has called!\n\n");
+		if(is_user_vaddr(f->R.rdi))
+			f->R.rax = tell(f->R.rdi);
 		break;
 	case SYS_CLOSE:
 		if(f->R.rdi != NULL)
@@ -231,17 +235,33 @@ int filesize(int fd)
 
 int read(int fd, void *buffer, unsigned size)
 {
+	if(!is_user_vaddr(buffer)) exit(-1); // write-bad-ptr 구현
+
+	if(fd == 0)
+	{
+		uint8_t inputData = input_getc();
+		return inputData;
+	}
+	else
+	{
+		if(fd >= 64 || fd == 1 || fd == 2) exit(-1);
+		off_t inputData = file_read(thread_current()->fd_table[fd], buffer, size);
+		return inputData;
+	}
+
 	// Read size bytes from the file open as fd into buffer.
 	// Return the number of bytes actually read (0 at end of file), or -1 if fails.
 	// If fd is 0, it reads from keyboard using input_getc(), otherwise reads from file using file_read() function.
 		// uint8_t input_getc(void)
 		// off_t file_read(struct file *file, void *buffer, off_t size)
-
-	return 0;
 }
 
 int write(int fd, const void *buffer, unsigned size)
 {
+	if(fd == 0) exit(-1);
+	if(fd >= 64) exit(-1);
+	if(!is_user_vaddr(buffer)) exit(-1); // write-bad-ptr 구현
+
 	if(fd == 1)
 	{
 		putbuf(buffer, size);
@@ -250,6 +270,7 @@ int write(int fd, const void *buffer, unsigned size)
 	{
 		// fd는 open 후 값을 그대로 끌어온다고 가정. 즉, fd는 바로 해당 파일을 가리킨다.
 		struct file *targetWrite = thread_current()->fd_table[fd];
+		if(targetWrite == NULL) exit(-1);
 		int writed = file_write(targetWrite, buffer, size);
 		// off_t file_write(struct file *file, const void *buffer, off_t size)
 
@@ -260,15 +281,20 @@ int write(int fd, const void *buffer, unsigned size)
 
 void seek(int fd, unsigned position)
 {
+	struct file *targetSeek = thread_current()->fd_table[fd];
+	if(targetSeek == NULL) exit(-1);
+
+	file_seek(targetSeek, position);
 	// Changes the next byte to be rtead or written in open file fd to position.
-	// use void file_seek
 }
 
+// Return the position of the next byte to be read or written in open file fd.
 unsigned tell(int fd)
 {
-	// Return the position of the next byte to be read or written in open file fd.
-	// use off_t file_tell
-	return 0;
+	struct file *targetTell = thread_current()->fd_table[fd];
+	if(targetTell == NULL) exit(-1);
+	off_t value = file_tell(targetTell);
+	return value;
 }
 
 void close(int fd)
