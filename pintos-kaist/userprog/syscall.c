@@ -77,16 +77,16 @@ syscall_handler (struct intr_frame *f) {
 		printf("remove has called!\n\n");
 		break;
 	case SYS_OPEN:
-	if(f->R.rdi != NULL)
-	{
-		if(is_user_vaddr(f->R.rdi) && is_user_vaddr(f->R.rsi))
-			f->R.rax = open(f->R.rdi);
+		if(f->R.rdi != NULL)
+		{
+			if(is_user_vaddr(f->R.rdi) && is_user_vaddr(f->R.rsi))
+				f->R.rax = open(f->R.rdi);
+			else
+				exit(-1);
+		}
 		else
 			exit(-1);
-	}
-	else
-		exit(-1);
-		break;
+			break;
 	case SYS_FILESIZE:
 		f->R.rax = filesize(f->R.rdi);
 		break;
@@ -104,7 +104,15 @@ syscall_handler (struct intr_frame *f) {
 		printf("tell has called!\n\n");
 		break;
 	case SYS_CLOSE:
-		printf("close has called!\n\n");
+		if(f->R.rdi != NULL)
+		{
+			if(is_user_vaddr(f->R.rdi))
+				close(f->R.rdi);
+			else
+				exit(-1);
+		}
+		else
+			exit(-1);
 		break;
 	default:
 		printf("SERIOUS ERROR!!\n\n");
@@ -195,7 +203,6 @@ bool remove(const char *file)
 int open(const char *file)
 {
 	if (pml4_get_page(thread_current()->pml4, file) == NULL) exit(-1);
-	//if(strlen(file) == 0) exit(-1);
 
 	struct thread *curr = thread_current();
 	struct file *targetFile = filesys_open(file);
@@ -266,7 +273,9 @@ unsigned tell(int fd)
 
 void close(int fd)
 {
-	// close file descriptor fd.
-	// use void file_close
+	if(fd > 64) exit(-1);
+	struct file *closeTarget = thread_current()->fd_table[fd];
+	if (!is_user_vaddr(closeTarget)) return;
+	file_close(closeTarget);
 }
 

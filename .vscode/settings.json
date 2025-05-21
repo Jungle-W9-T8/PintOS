@@ -30,6 +30,8 @@
         "init.h": "c",
         "string_view": "c",
         "atomic": "c",
-        "timer.h": "c"
+        "timer.h": "c",
+        "istream": "c",
+        "limits": "c"
     }
 }
