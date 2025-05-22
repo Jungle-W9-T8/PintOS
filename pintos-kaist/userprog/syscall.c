@@ -235,16 +235,20 @@ int read (int fd, void *buffer, unsigned size) {
 }
 
 int write (int fd, const void *buffer, unsigned size) {
-	// 파일 디스크립터가 STDOUT(1)일 경우, 콘솔에 출력
+	if ((buffer == NULL) || !(pml4_get_page(thread_current()->pml4, buffer))) exit(-1); 	
+	if (fd < 0 || fd > 64) return -1;
+	if (size == 0) return 0;
+	
+	// 표준 입력(키보드)
 	if (fd == 1) {
 		putbuf(buffer, size);
+		return size;
 	} 
-	// f->R.rax = size;  // 출력한 바이트 수 반환
-	else {
-		// f->R.rax = -1;  // 현재는 STDOUT만 지원
-		return -1;
-	}
-	return size;
+
+	// 파일 쓰기
+	struct file *f = thread_current()->fdt[fd];
+	if (f == NULL) return -1;
+	return file_write(f, buffer, size);
 }
  
 // void seek (int fd, unsigned position) {
