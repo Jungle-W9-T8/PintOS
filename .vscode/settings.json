@@ -23,6 +23,9 @@
         "string_view": "c",
         "atomic": "c",
         "lib.h": "c",
-        "main.h": "c"
+        "main.h": "c",
+        "istream": "c",
+        "limits": "c",
+        "file.h": "c"
     }
 }

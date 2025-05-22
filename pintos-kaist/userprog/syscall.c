@@ -10,6 +10,9 @@
 #include "threads/vaddr.h"
 
 #include "threads/init.h"
+#include "userprog/process.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *f);
@@ -103,7 +106,6 @@ syscall_handler (struct intr_frame *f) {
 			break;
 
 		case SYS_CREATE:
-
 			f->R.rax = create(f->R.rdi, f->R.rsi);
 			// f->R.rax = create ((const char *) arg1, (unsigned) arg2);
 			break;
@@ -117,7 +119,7 @@ syscall_handler (struct intr_frame *f) {
 			break;
 
 		case SYS_FILESIZE:
-			// f->R.rax = filesize ((int) arg1);
+			f->R.rax = filesize ((int) arg1);
 			break;
 			
 		case SYS_READ:
@@ -198,15 +200,39 @@ int open (const char *file) {
 	return curr_fd;
 }
 
-// int filesize (int fd) {
+int filesize (int fd) {
+	if (fd < 0 || fd > 64) exit(-1);
 
-// }
+	struct file *f = thread_current()->fdt[fd]; 
+	if (f == NULL) return -1;
+
+	return file_length(f);
+}
 
 /*
 size만큼 읽어서 buffer에 저장
 */
-// int read (int fd, void *buffer, unsigned size) {
-// }
+int read (int fd, void *buffer, unsigned size) {
+	if ((buffer == NULL) || !(pml4_get_page(thread_current()->pml4, buffer))) exit(-1); 	
+	if (fd < 0 || fd >= 64) return -1;
+	if (size == 0) return 0;
+
+	// 표준 입력(키보드)
+	if (fd == 0) {
+		for (unsigned i = 0; i < size; i++) {
+			((char *) buffer)[i] = input_getc();
+		} 
+		return size;
+	}
+
+	// 파일 읽기
+	struct file *f = thread_current()->fdt[fd];
+	if (f == NULL) return -1;
+
+	int bytes_read = file_read(f, buffer, size);
+	if (bytes_read < 0) return -1;
+	return bytes_read;
+}
 
 int write (int fd, const void *buffer, unsigned size) {
 	// 파일 디스크립터가 STDOUT(1)일 경우, 콘솔에 출력

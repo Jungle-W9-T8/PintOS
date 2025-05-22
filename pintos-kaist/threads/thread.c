@@ -710,6 +710,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	list_init(&t->donations);
 
 	/* File Desciptor Table 초기화 */
+	// *t->fdt = NULL;
 	memset (t->fdt, 0, sizeof t->fdt);
 	t->next_fd = 3;
 }

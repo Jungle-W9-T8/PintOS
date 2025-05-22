@@ -129,13 +129,16 @@ __do_fork (void *aux) {
 	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
+	// 부모의 인터럽트 프레임을 쓸 수 있도록 만들어주기
 	struct intr_frame *parent_if;
 	bool succ = true;
 
 	/* 1. Read the cpu context to local stack. */
+	// 내용을 지역변수에 담기
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
 
 	/* 2. Duplicate PT */
+	// 자식 프로세스의 페이지 테이블에게 복제한 값을 배치해야함
 	current->pml4 = pml4_create();
 	if (current->pml4 == NULL)
 		goto error;
