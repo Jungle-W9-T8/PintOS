@@ -32,6 +32,8 @@
         "atomic": "c",
         "timer.h": "c",
         "istream": "c",
-        "limits": "c"
+        "limits": "c",
+        "interrupt.h": "c",
+        "file.h": "c"
     }
 }
