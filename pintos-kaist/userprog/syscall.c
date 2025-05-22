@@ -214,7 +214,7 @@ size만큼 읽어서 buffer에 저장
 */
 int read (int fd, void *buffer, unsigned size) {
 	if ((buffer == NULL) || !(pml4_get_page(thread_current()->pml4, buffer))) exit(-1); 	
-	if (fd < 0 || fd >= 64) return -1;
+	if (fd < 0 || fd > 64) return -1;
 	if (size == 0) return 0;
 
 	// 표준 입력(키보드)
@@ -255,9 +255,13 @@ int write (int fd, const void *buffer, unsigned size) {
 
 // }
 
-// void close (int fd) {
+void close (int fd) {
+	if (fd < 0 || fd > 64) return -1;
 
-// }
+	// fdt 에서 삭제
+	struct thread *curr = thread_current();
+	curr->fdt[fd] = NULL;
+}
 
 // int dup2 (int oldfd, int newfd) {
 

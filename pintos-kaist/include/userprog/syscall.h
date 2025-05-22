@@ -19,7 +19,7 @@ int filesize (int fd);
 int read (int fd, void *buffer, unsigned size);
 // void seek (int fd, unsigned position);
 // unsigned tell (int fd);
-// void close (int fd); 
+void close (int fd); 
 // int dup2 (int oldfd, int newfd);
 // void *mmap (void *addr, size_t length, int writable, int fd, off_t offset);
 // void munmap (void *addr);
