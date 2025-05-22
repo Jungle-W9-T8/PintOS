@@ -491,6 +491,15 @@ thread_exit (void) {
 	intr_disable ();
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
+	struct thread *curr = thread_current();
+	
+	// curr->fdt
+	for (int fd = 3; fd <= 64; fd++) {
+		if (curr->fdt[fd] != NULL) {
+			file_close(curr->fdt[fd]);
+			curr->fdt[fd] = NULL;
+		}
+	}
 }
 
 /*************************************************************
@@ -700,7 +709,9 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->base_priority = priority;
 	list_init(&t->donations);
 
-	
+	/* File Desciptor Table 초기화 */
+	memset (t->fdt, 0, sizeof t->fdt);
+	t->next_fd = 3;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

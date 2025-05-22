@@ -65,6 +65,8 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+		
+	// lock_init (&filesys_lock);
 }
 
 /* The main system call interface */
@@ -111,7 +113,7 @@ syscall_handler (struct intr_frame *f) {
 			break;
 
 		case SYS_OPEN:
-			// f->R.rax = open ((const char *) arg1);
+			f->R.rax = open ((const char *) arg1);
 			break;
 
 		case SYS_FILESIZE:
@@ -119,7 +121,7 @@ syscall_handler (struct intr_frame *f) {
 			break;
 			
 		case SYS_READ:
-			// f->R.rax = read ((int) arg1, (void *) arg2, (unsigned) arg3);
+			f->R.rax = read ((int) arg1, (void *) arg2, (unsigned) arg3);
 			break;
 
 		case SYS_WRITE: 			
@@ -150,7 +152,7 @@ void halt (void) {
 	power_off();
 }
 
- void exit (int status) {
+void exit (int status) {
 	struct thread *curr = thread_current();
 	printf("%s: exit(%d)\n", curr->name, status);
 	thread_exit();
@@ -169,7 +171,6 @@ void halt (void) {
 // }
 
 bool create (const char *file, unsigned initial_size) {		
-	if (!is_valid_user_pointer(file)) exit(-1);
 	if ((file == NULL) || !(pml4_get_page(thread_current()->pml4, file))) exit(-1); 
 	return filesys_create(file, initial_size);
 }
@@ -178,16 +179,33 @@ bool create (const char *file, unsigned initial_size) {
 
 // }
 
-// int open (const char *file) {
+/* 
+파라미터 file과 동일한 path를 가진 경로의 파일을 열고 fd를 반환한다 
+fdt[fd]도 배정해주기
+*/
+int open (const char *file) {
+	if ((file == NULL) || !(pml4_get_page(thread_current()->pml4, file))) exit(-1); 	
 
-// }
+	struct file *f = filesys_open(file);
+	if (f == NULL) return -1;
+
+	// fdt 구성
+	struct thread *curr = thread_current();
+	int curr_fd = curr->next_fd;
+	curr->fdt[curr_fd] = f;
+	curr->next_fd++;
+
+	return curr_fd;
+}
 
 // int filesize (int fd) {
 
 // }
 
+/*
+size만큼 읽어서 buffer에 저장
+*/
 // int read (int fd, void *buffer, unsigned size) {
-
 // }
 
 int write (int fd, const void *buffer, unsigned size) {
