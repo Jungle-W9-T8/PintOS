@@ -717,10 +717,12 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 
-	// TODO SOL.
 	t->wait_on_lock = NULL;
 	t->base_priority = priority;
 	list_init(&t->donations);
+
+	t->threadSema.value = 1;
+	list_init(&t->threadSema.waiters);
 
 	
 }

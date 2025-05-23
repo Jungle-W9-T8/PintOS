@@ -217,6 +217,7 @@ wait하지 않으면 exit status가 유실되며, wait는 한 번만 가능하�
 			// pid does not refer to a direct child of the calling process.
 			// the process that calls wait has already called wait on pid.
 }
+
 bool create(const char *file, unsigned initial_size)
 {
 	if (pml4_get_page(thread_current()->pml4, file) == NULL) exit(-1);
