@@ -135,17 +135,23 @@ __do_fork (void *aux) {
 	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if;
-	if_ = parent->tf;
-
+	// 부모의 인터럽트 프레임을 쓸 수 있도록 만들어주기
+	struct intr_frame *parent_if = &parent->tf;
+	current->parent = parent;
+	list_push_back(&parent->children, &current->elem);
 	bool succ = true;
-	
+
+
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
 
 	current->tf.R.rbx = if_.R.rbx;
 	current->tf.rsp = if_.rsp;
-	current->tf.R.rbp
+	current->tf.R.rbp = if_.R.rbp;
+	current->tf.R.r12 = if_.R.r12;
+	current->tf.R.r13 = if_.R.r13;
+	current->tf.R.r14 = if_.R.r14;
+	current->tf.R.r15 = if_.R.r15;
 
 
 	/* 2. Duplicate PT */
@@ -162,7 +168,12 @@ __do_fork (void *aux) {
 	if (!pml4_for_each (parent->pml4, duplicate_pte, parent))
 		goto error;
 #endif
-	//struct file *fileCopy = file_duplicate()
+
+	for(int i = 0; i < 64; i++)
+	{
+		if(parent->fdt[i] == NULL) continue;
+		current->fdt[i] = file_duplicate(parent->fdt[i]);
+	}
 	/* TODO: Your code goes here.
 	 * TODO: Hint) To duplicate the file object, use `file_duplicate`
 	 * TODO:       in include/filesys/file.h. Note that parent should not return

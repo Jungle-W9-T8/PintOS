@@ -513,6 +513,27 @@ thread_exit (void) {
 	intr_disable ();
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
+	struct thread *curr = thread_current();
+	struct list_elem *e;
+ 	for (e = list_begin (&curr->parent->children); e != list_end (&curr->parent->children); e = list_next (e)) {
+ 		struct thread *result = list_entry (e, struct thread, elem);
+ 		if (result->tid = curr->tid)
+		{
+			list_remove(&result->elem);
+			break;
+		}
+ 	}
+	// 부모 자식 관계 끊어주기
+	curr->parent = NULL;
+
+
+	// curr->fdt
+	for (int fd = 3; fd <= 64; fd++) {
+		if (curr->fdt[fd] != NULL) {
+			file_close(curr->fdt[fd]);
+			curr->fdt[fd] = NULL;
+		}
+	}
 }
 
 /*************************************************************
@@ -724,7 +745,20 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->threadSema.value = 1;
 	list_init(&t->threadSema.waiters);
 
-	
+	t->threadSema.value = 1;
+	list_init(&t->threadSema.waiters);
+
+	/* File Desciptor Table 초기화 */
+	// *t->fdt = NULL;
+	memset (t->fdt, 0, sizeof t->fdt);
+	t->next_fd = 3;
+
+	/* Relations */
+	t->parent = NULL;
+	list_init(&t->children);
+
+	/* Semaphore */
+	sema_init(&t->sema_wait, 0);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

@@ -111,6 +111,13 @@ struct thread {
 	
 	struct semaphore threadSema;
 
+	/* relations */
+	struct thread *parent;
+	struct list children;
+
+	/* semaphore */
+	struct semaphore *sema_wait;
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
