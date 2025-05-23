@@ -124,7 +124,7 @@ struct thread {
 	// struct thread *parentThread;
 	// struct list siblingThread;
 	// struct list_elem childThread;
-	// struct file file_fdt[64];
+	// struct file fd_table[64];
 	// int next_fd;
 	// 초기화 구문 필요
 #endif

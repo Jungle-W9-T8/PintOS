@@ -497,14 +497,6 @@ thread_exit (void) {
 
 #ifdef USERPROG
 	processOff();
-	struct thread *curr = thread_current();
-	for(int i = 0; i < 64; i++)
-	{
-		// free?
-		// 여기서하는거 아니고 close 해야하는거 아니야?
-		curr->fd_table[i] = NULL;
-	}
-
 	process_exit ();
 #endif
 
@@ -526,12 +518,11 @@ thread_exit (void) {
 	// 부모 자식 관계 끊어주기
 	curr->parent = NULL;
 
-
-	// curr->fdt
+	// curr->fd_table
 	for (int fd = 3; fd <= 64; fd++) {
-		if (curr->fdt[fd] != NULL) {
-			file_close(curr->fdt[fd]);
-			curr->fdt[fd] = NULL;
+		if (curr->fd_table[fd] != NULL) {
+			file_close(curr->fd_table[fd]);
+			curr->fd_table[fd] = NULL;
 		}
 	}
 }
@@ -749,8 +740,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	list_init(&t->threadSema.waiters);
 
 	/* File Desciptor Table 초기화 */
-	// *t->fdt = NULL;
-	memset (t->fdt, 0, sizeof t->fdt);
+	// *t->fd_table = NULL;
+	memset (t->fd_table, 0, sizeof t->fd_table);
 	t->next_fd = 3;
 
 	/* Relations */

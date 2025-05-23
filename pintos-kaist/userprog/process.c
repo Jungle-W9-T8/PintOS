@@ -171,8 +171,8 @@ __do_fork (void *aux) {
 
 	for(int i = 0; i < 64; i++)
 	{
-		if(parent->fdt[i] == NULL) continue;
-		current->fdt[i] = file_duplicate(parent->fdt[i]);
+		if(parent->fd_table[i] == NULL) continue;
+		current->fd_table[i] = file_duplicate(parent->fd_table[i]);
 	}
 	/* TODO: Your code goes here.
 	 * TODO: Hint) To duplicate the file object, use `file_duplicate`
