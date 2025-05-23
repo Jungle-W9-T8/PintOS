@@ -144,9 +144,15 @@ void halt(void)
 
 void exit(int status)
 {
-	struct thread *curr = thread_current();
-	printf("%s: exit(%d)\n", curr->name, status);
-	thread_exit();
+    struct thread *curr = thread_current();
+    if (curr->parent != NULL)
+    {
+        sema_up(&curr->sema_wait);
+        curr->status = status;
+        sema_down(&curr->parent->sema_wait);
+    }
+    printf("%s: exit(%d)\n", curr->name, status);
+    thread_exit();
 }
 
 tid_t fork (const char *thread_name)
@@ -197,25 +203,26 @@ int exec(const char *cmd_line)
 	// Wait for termination of child process whose process id is pid
 }
 
-int wait(tid_t pid)
-{
-	// 이거 sema 써야함 wait , fork 단위의 sema 사용할 것
-	/*
-	지정된 자식 프로세스가 종료될 때까지 기다리고, 종료 코드를 수거한다.
-wait하지 않으면 exit status가 유실되며, wait는 한 번만 가능하다.*/
-	// TODO :
-	// wait for a child process pid to exit and retrieve the child's exit status.
-	// IF : PID is alive
-		// wait till it terminates.
-		// Return the status that pid passed to exit.
-	// IF : PID did not call exit but was terminated by the kernel, return -1
-	// A parent process cna call wait for the cild process that has terminated
-		// - return exit status of the terminated child processes.
+int wait (tid_t pid) {
+    struct thread *cur = thread_current();
+    struct thread *child = NULL;
+    struct list_elem *e;
+    int child_status;
 
-	// After the child terminates, the parent should deallocatge its process descriptor
-		// wait fails and return -1 if
-			// pid does not refer to a direct child of the calling process.
-			// the process that calls wait has already called wait on pid.
+    for (e = list_begin (&cur->children); e != list_end (&cur->children); e = list_next (e)) {
+        struct thread *result = list_entry (e, struct thread, elem);
+        if (result->tid = pid)
+        {
+            child = result;
+            child_status = child->status;
+            break;
+        }
+    }
+
+    if (child == NULL) return -1;
+    sema_down (&child->sema_wait);
+    sema_up (&cur->sema_wait);
+    return child_status;
 }
 
 bool create(const char *file, unsigned initial_size)
