@@ -189,6 +189,7 @@ tid_t
 thread_create (const char *name, int priority,
 		thread_func *function, void *aux) {
 	struct thread *t;
+	//struct kernel_thread_frame *kf;
 	tid_t tid;
 
 	ASSERT (function != NULL);			// 실행할 함수는 NULL일 수 없음
@@ -211,18 +212,31 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;                   // 스택 세그먼트
 	t->tf.cs = SEL_KCSEG;                   // 코드 세그먼트
 	t->tf.eflags = FLAG_IF;                 // 인터럽트 플래그 설정
-
+	
 	list_init(&t->donations);
 	t->wait_on_lock = NULL;
 	t->base_priority = t->priority;
-	/* 4. 스레드를 READY 상태로 전환하고 ready_list에 삽입 */
+	
+	struct file *stdin;
+	struct file *stdout;
+	struct file *stderr;
+
+	t->fd_table[0] = stdin;
+	t->fd_table[1] = stdout;
+	t->fd_table[2] = stderr;
+	t->next_fd = 3;
+
+
+	// userprog 확장을 위한 추가된 쓰레드 멤버변수 초기화 과정
+	t->parentThread = NULL;
+	list_init(&t->siblingThread);
+
+	// 스레드를 READY 상태로 전환하고 ready_list에 삽입하기
 	thread_unblock (t);
 	
 	/** project1-Priority Scheduling */
 	if(t->priority > thread_current()->priority)
 		thread_yield();
-
-	// preempt_priority();	// 🔥 removed: thread_unblock already handles preemption logic
 
 	return tid;								// 생성된 스레드의 ID 반환
 }
@@ -482,6 +496,15 @@ thread_exit (void) {
 	ASSERT (!intr_context ());
 
 #ifdef USERPROG
+	processOff();
+	struct thread *curr = thread_current();
+	for(int i = 0; i < 64; i++)
+	{
+		// free?
+		// 여기서하는거 아니고 close 해야하는거 아니야?
+		curr->fd_table[i] = NULL;
+	}
+
 	process_exit ();
 #endif
 
@@ -694,10 +717,12 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 
-	// TODO SOL.
 	t->wait_on_lock = NULL;
 	t->base_priority = priority;
 	list_init(&t->donations);
+
+	t->threadSema.value = 1;
+	list_init(&t->threadSema.waiters);
 
 	
 }

@@ -5,6 +5,8 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -101,9 +103,23 @@ struct thread {
 	struct list_elem elem;              /* List element. */
 	struct list_elem d_elem;            /* Donations List element. */
 
+	struct file *fd_table[64];
+	struct thread *parentThread;
+	struct list siblingThread;
+	struct list_elem childThread;
+	int next_fd;
+	
+	struct semaphore threadSema;
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
+	// struct thread *parentThread;
+	// struct list siblingThread;
+	// struct list_elem childThread;
+	// struct file file_fdt[64];
+	// int next_fd;
+	// 초기화 구문 필요
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
