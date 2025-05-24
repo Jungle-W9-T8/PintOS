@@ -13,6 +13,9 @@
 #include "userprog/process.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "userprog/process.h"
+#include "threads/palloc.h"
+#include <string.h>
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *f);
@@ -92,10 +95,20 @@ syscall_handler (struct intr_frame *f) {
 			exit(-1);
 		break;
 	case SYS_EXEC:
-		printf("exec has called!\n\n");
+		if(f->R.rdi != NULL)
+		{
+			f->R.rax = exec(f->R.rdi);
+		}
+		else
+			exit(-1);
 		break;
 	case SYS_WAIT:
-		printf("wait has called!\n\n");
+		if(f->R.rdi != NULL)
+		{
+			f->R.rax = wait(f->R.rdi);
+		}
+		else
+			exit(-1);
 		break;
 	case SYS_CREATE:
 		 if(f->R.rdi != NULL)
@@ -187,14 +200,9 @@ void exit(int status)
 
 tid_t fork (const char *thread_name)
 {
-	// 현재 프로세스의 전체 상태를 그대로 복제하여 새로운 자식 프로세스를 만든다.
-	// 부모와 자식은 완전히 독립되지만, 초기 상태(메모리, 파일, 레지스터)는 동일하다.
-
-	// 현재 내용은 복제 자체를 수행하고 있진 않음. 그냥 가져다 대는 수준..
 	struct thread *curr = thread_current();
 	tid_t newThread = 0;
 	newThread = process_fork(thread_name, &curr->tf);
-	// 마지막 컴파일 성공 코드 : tid_t newThread = thread_create(thread_name, PRI_DEFAULT, process_fork, curr);
 	
 	while(newThread == 0) {}
 
@@ -203,35 +211,20 @@ tid_t fork (const char *thread_name)
 	return newThread;
 }
 
+
 int exec(const char *cmd_line)
 { 
 	if(cmd_line == NULL) exit(-1);
-	char *args[32] = {NULL};
-	char *token, *saveptr;
-	int argc = 0;
 
-	for(token = strtok_r(cmd_line, " \t\r\n", &saveptr); token && argc < 31; token = strtok_r(NULL, " \t\r\n", &saveptr))
-	{
-		args[argc] = token;
-		argc++;
-	}
+	char *package_cmd;
+	package_cmd = palloc_get_page(PAL_ZERO);
 
-	char *realArgs = args[1];
-	thread_func *commandLine = args[0];
-	struct thread *curr = thread_current();
+	strlcpy(package_cmd, cmd_line, strlen(cmd_line) + 1);
 
-	// 호불호 : 여긴 시스템 콜이라 이 Thread blocked가 수행되어도 ㄱㅊ.
-	curr->status = THREAD_BLOCKED;
-	// t->tf.R.rdi = (uint64_t) function;      // 첫 번째 인자로 실행할 함수 전달
-	palloc_free_page(curr->tf.R.rdi);
-	palloc_free_page(curr->tf.R.rsi);
-	curr->tf.R.rdi = (uint64_t) commandLine;
-	curr->tf.R.rsi = (uint64_t) realArgs;
-
-	thread_unblock(curr);
-	// TODO :	
-	// Wait for termination of child process whose process id is pid
+	int result = process_exec(package_cmd);
+	if (result == -1) return result;
 }
+
 
 int wait (tid_t pid) {
     struct thread *cur = thread_current();
@@ -303,6 +296,8 @@ int filesize(int fd)
 // 키보드 입력을 받거나 파일에서 내용을 가져온다.
 int read(int fd, void *buffer, unsigned size)
 {
+	if ((buffer == NULL) || !(pml4_get_page(thread_current()->pml4, buffer))) exit(-1);
+
 	if(!is_user_vaddr(buffer)) exit(-1); // write-bad-ptr 구현
 
 	if(fd == 0)
