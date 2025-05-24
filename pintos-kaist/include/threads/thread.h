@@ -117,11 +117,14 @@ struct thread {
 
 	/* semaphore */
 	struct semaphore *sema_wait;
+	uint64_t *pml4;                     /* Page map level 4 */
+
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
-	uint64_t *pml4;                     /* Page map level 4 */
 	// struct thread *parentThread;
+	// uint64_t *pml4;                     /* Page map level 4 */
+
 	// struct list siblingThread;
 	// struct list_elem childThread;
 	// struct file fd_table[64];
