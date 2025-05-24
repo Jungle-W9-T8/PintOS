@@ -189,6 +189,7 @@ tid_t
 thread_create (const char *name, int priority,
 		thread_func *function, void *aux) {
 	struct thread *t;
+	//struct kernel_thread_frame *kf;
 	tid_t tid;
 
 	ASSERT (function != NULL);			// 실행할 함수는 NULL일 수 없음
@@ -211,18 +212,31 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;                   // 스택 세그먼트
 	t->tf.cs = SEL_KCSEG;                   // 코드 세그먼트
 	t->tf.eflags = FLAG_IF;                 // 인터럽트 플래그 설정
-
+	
 	list_init(&t->donations);
 	t->wait_on_lock = NULL;
 	t->base_priority = t->priority;
-	/* 4. 스레드를 READY 상태로 전환하고 ready_list에 삽입 */
+	
+	struct file *stdin;
+	struct file *stdout;
+	struct file *stderr;
+
+	t->fd_table[0] = stdin;
+	t->fd_table[1] = stdout;
+	t->fd_table[2] = stderr;
+	t->next_fd = 3;
+
+
+	// userprog 확장을 위한 추가된 쓰레드 멤버변수 초기화 과정
+	t->parentThread = NULL;
+	list_init(&t->siblingThread);
+
+	// 스레드를 READY 상태로 전환하고 ready_list에 삽입하기
 	thread_unblock (t);
 	
 	/** project1-Priority Scheduling */
 	if(t->priority > thread_current()->priority)
 		thread_yield();
-
-	// preempt_priority();	// 🔥 removed: thread_unblock already handles preemption logic
 
 	return tid;								// 생성된 스레드의 ID 반환
 }
@@ -483,6 +497,7 @@ thread_exit (void) {
 
 #ifdef USERPROG
 	processOff();
+	processOff();
 	process_exit ();
 #endif
 
@@ -492,12 +507,23 @@ thread_exit (void) {
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
 	struct thread *curr = thread_current();
-	
-	// curr->fdt
+	struct list_elem *e;
+ 	for (e = list_begin (&curr->parent->children); e != list_end (&curr->parent->children); e = list_next (e)) {
+ 		struct thread *result = list_entry (e, struct thread, elem);
+ 		if (result->tid = curr->tid)
+		{
+			list_remove(&result->elem);
+			break;
+		}
+ 	}
+	// 부모 자식 관계 끊어주기
+	curr->parent = NULL;
+
+	// curr->fd_table
 	for (int fd = 3; fd <= 64; fd++) {
-		if (curr->fdt[fd] != NULL) {
-			file_close(curr->fdt[fd]);
-			curr->fdt[fd] = NULL;
+		if (curr->fd_table[fd] != NULL) {
+			file_close(curr->fd_table[fd]);
+			curr->fd_table[fd] = NULL;
 		}
 	}
 }
@@ -704,15 +730,27 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 
-	// TODO SOL.
 	t->wait_on_lock = NULL;
 	t->base_priority = priority;
 	list_init(&t->donations);
 
+	t->threadSema.value = 1;
+	list_init(&t->threadSema.waiters);
+
+	t->threadSema.value = 1;
+	list_init(&t->threadSema.waiters);
+
 	/* File Desciptor Table 초기화 */
-	// *t->fdt = NULL;
-	memset (t->fdt, 0, sizeof t->fdt);
+	// *t->fd_table = NULL;
+	memset (t->fd_table, 0, sizeof t->fd_table);
 	t->next_fd = 3;
+
+	/* Relations */
+	t->parent = NULL;
+	list_init(&t->children);
+
+	/* Semaphore */
+	sema_init(&t->sema_wait, 0);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

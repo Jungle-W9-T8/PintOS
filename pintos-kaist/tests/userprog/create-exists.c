@@ -14,3 +14,4 @@ test_main (void)
   CHECK (create ("baffle.dat", 0), "create baffle.dat");
   CHECK (!create ("warble.dat", 0), "try to re-create quux.dat");
 }
+
