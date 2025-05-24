@@ -273,7 +273,7 @@ int filesize(int fd)
 // 키보드 입력을 받거나 파일에서 내용을 가져온다.
 int read(int fd, void *buffer, unsigned size)
 {
-	if(!is_user_vaddr(buffer)) exit(-1); // write-bad-ptr 구현
+	if ((buffer == NULL) || !(pml4_get_page(thread_current()->pml4, buffer))) exit(-1);
 
 	if(fd == 0)
 	{
@@ -296,7 +296,7 @@ int write(int fd, const void *buffer, unsigned size)
 {
 	if(fd == 0) exit(-1);
 	if(fd >= 64) exit(-1);
-	if(!is_user_vaddr(buffer)) exit(-1); // write-bad-ptr 구현
+	if ((buffer == NULL) || !(pml4_get_page(thread_current()->pml4, buffer))) exit(-1);
 
 	if(fd == 1)
 	{
