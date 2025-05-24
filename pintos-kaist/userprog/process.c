@@ -267,16 +267,6 @@ _if.R.rdi = argc;
 	do_iret (&_if);
 	NOT_REACHED ();
 }
- 
-
-
-int isWaitOn = 1;
-
-void processOff()
-{
-	isWaitOn = 0;
-}
-
 
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an
