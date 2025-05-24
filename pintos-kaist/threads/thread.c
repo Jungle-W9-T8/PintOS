@@ -497,6 +497,7 @@ thread_exit (void) {
 
 #ifdef USERPROG
 	processOff();
+	processOff();
 	process_exit ();
 #endif
 

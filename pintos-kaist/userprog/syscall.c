@@ -7,8 +7,10 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "threads/vaddr.h"
 
 #include "threads/init.h"
+#include "userprog/process.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "userprog/process.h"
@@ -16,7 +18,34 @@
 #include <string.h>
 
 void syscall_entry (void);
-void syscall_handler (struct intr_frame *);
+void syscall_handler (struct intr_frame *f);
+bool is_valid_user_pointer(const void *uaddr);
+void halt (void);
+void exit (int status);
+ int write (int fd, const void *buffer, unsigned size);
+
+// pid_t fork (const char *thread_name);
+// int exec (const char *file);
+// int wait (pid_t pid);
+// bool create (const char *file, unsigned initial_size);
+// bool remove (const char *file);
+// int open (const char *file);
+// int filesize (int fd);
+// int read (int fd, void *buffer, unsigned size);
+// void seek (int fd, unsigned position);
+// unsigned tell (int fd);
+// void close (int fd); 
+// int dup2 (int oldfd, int newfd);
+// void *mmap (void *addr, size_t length, int writable, int fd, off_t offset);
+// void munmap (void *addr);
+// bool chdir (const char *dir);
+// bool mkdir (const char *dir);
+// bool readdir (int fd, char name[READDIR_MAX_LEN + 1]);
+// bool isdir (int fd);
+// int inumber (int fd);
+// int symlink (const char* target, const char* linkpath);
+// int mount (const char *path, int chan_no, int dev_no);
+// int umount (const char *path);
 
 /* System call.
  *
@@ -42,6 +71,8 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+		
+	// lock_init (&filesys_lock);
 }
 
 /* The main system call interface */
@@ -170,14 +201,16 @@ void exit(int status)
 tid_t fork (const char *thread_name)
 {
 	struct thread *curr = thread_current();
-	tid_t newThread = 0;
-	newThread = process_fork(thread_name, &curr->tf);
+	tid_t new_thread = 0;
+	struct intr_frame if_;
+	memcpy(&if_, &curr->tf, sizeof(struct intr_frame));
+	new_thread = process_fork(thread_name, &if_);
 	
-	while(newThread == 0) {}
+	while (new_thread == 0) {}
 
-	if(newThread < 0)
+	if (new_thread < 0)
 		return TID_ERROR; 
-	return newThread;
+	return new_thread;
 }
 
 

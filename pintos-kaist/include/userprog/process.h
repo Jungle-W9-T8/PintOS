@@ -18,6 +18,8 @@ int process_exec (void *f_name);
 void processOff();
 int process_wait (tid_t);
 void process_exit (void);
+
+void processOff();
 void process_activate (struct thread *next);
 
 #endif /* userprog/process.h */

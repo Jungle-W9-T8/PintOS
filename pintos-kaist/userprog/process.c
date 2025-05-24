@@ -87,8 +87,9 @@ initd (void *f_name) {
 tid_t
 process_fork (const char *name, struct intr_frame *if_) {
 	/* Clone current thread to new thread.*/
+	
 	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+			PRI_DEFAULT, __do_fork, if_);
 }
 
 #ifndef VM
@@ -103,11 +104,10 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
-	if(is_kern_pte(parent->pml4) == true) return false;
-	
+	if(is_kern_pte(pte) == true) return false;
+	if(is_kernel_vaddr(va) == true) return true;
 	/* 2. Resolve VA from the parent's page map level 4. */
-	parent_page = pml4_get_page (parent->pml4, va);
-
+	parent_page = pml4_get_page (pte, va);
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
@@ -117,16 +117,14 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
 	memcpy(newpage, parent_page, PGSIZE);
-	writable = true;
+	writable = is_writable(pte);
 	// writeable 확인하는 함수 아직 모름, 기본을 일단 true로 던지고 나중에 수정 할거다
 	
-
-
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
  	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
-		//palloc_free_page(newpage);
+		palloc_free_page(newpage);
 		return false;
 	}
 	return true;
@@ -142,15 +140,17 @@ __do_fork (void *aux) {
 	struct intr_frame if_;
 	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
+
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
 	// 부모의 인터럽트 프레임을 쓸 수 있도록 만들어주기
-	struct intr_frame *parent_if = &parent->tf;
+	struct intr_frame *parent_if = (struct intr_frame*) aux;
 	current->parent = parent;
 	list_push_back(&parent->children, &current->elem);
 	bool succ = true;
 
 
 	/* 1. Read the cpu context to local stack. */
+	// 내용을 지역변수에 담기
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
 
 	current->tf.R.rbx = if_.R.rbx;
@@ -163,6 +163,7 @@ __do_fork (void *aux) {
 
 
 	/* 2. Duplicate PT */
+	// 자식 프로세스의 페이지 테이블에게 복제한 값을 배치해야함
 	current->pml4 = pml4_create();
 	if (current->pml4 == NULL)
 		goto error;
@@ -177,11 +178,11 @@ __do_fork (void *aux) {
 		goto error;
 #endif
 
-	for(int i = 0; i < 64; i++)
-	{
-		if(parent->fd_table[i] == NULL) continue;
-		current->fd_table[i] = file_duplicate(parent->fd_table[i]);
-	}
+	// for(int i = 0; i < 64; i++)
+	// {
+	// 	if(parent->fd_table[i] == NULL) continue;
+	// 	// current->fd_table[i] = file_duplicate(parent->fd_table[i]); todo: fork 통과시 주석 해제하고 문제 해결
+	// }
 	/* TODO: Your code goes here.
 	 * TODO: Hint) To duplicate the file object, use `file_duplicate`
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
@@ -192,7 +193,7 @@ __do_fork (void *aux) {
 
 	/* Finally, switch to the newly created process. */
 	if (succ)
-		do_iret (&if_);
+		do_iret (&current->tf);
 error:
 	thread_exit ();
 }
@@ -202,6 +203,7 @@ error:
 int
 process_exec (void *f_name) {
 	char *file_name = f_name;
+	char *tokens;
 	bool success;
 	
 	char *saveptr, *token;
@@ -272,16 +274,6 @@ _if.R.rdi = argc;
 	do_iret (&_if);
 	NOT_REACHED ();
 }
- 
-
-
-int isWaitOn = 1;
-
-void processOff()
-{
-	isWaitOn = 0;
-}
-
 
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an
@@ -292,6 +284,14 @@ void processOff()
  *
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
+
+int isWaitOn = 1; // 전역변수로써 선언
+
+void processOff()
+{
+	isWaitOn = 0;
+}
+
 int
 process_wait (tid_t child_tid UNUSED) {
 	// 힌트 번역
@@ -429,6 +429,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	off_t file_ofs;
 	bool success = false;
 	int i;
+	char *save_ptr;
 
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
@@ -436,8 +437,14 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate (thread_current ());
 
+	/* 파일명 추출 */
+	char *file_name_copy=malloc(sizeof(char)*(strlen(file_name)+1));
+	if (file_name_copy == NULL) return NULL;
+	strlcpy(file_name_copy, file_name, (strlen(file_name)+1)); // file_name_copy = file_name+\0
+	char *file_name_first_word = strtok_r(file_name_copy, " ", &save_ptr); // file_name_copy " "기준으로 분리한 맨 앞 토큰
+
 	/* Open executable file. */
-	file = filesys_open (file_name);
+	file = filesys_open (file_name_first_word);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
@@ -525,6 +532,62 @@ done:
 	return success;
 }
 
+void construct_stack(const char* file_name, struct intr_frame *if__) {
+    int argc = 0;
+    int idx;
+    char **argv;
+	char *file_name_copy = palloc_get_page(0);
+    char *token;
+	char *tokens[100];
+	char *tokens_addr[32];
+	char *save_ptr;
+    int cur_arg_len;
+	int total_arg_len;
+
+    // 인자 개수 계산 및 인자별 시작 주소, 인자 문자열 저장
+    strlcpy(file_name_copy, file_name, strlen(file_name) + 1);
+
+    token = strtok_r(file_name_copy, " ", &save_ptr);
+	
+	// 인자들을 배열에 저장
+	while (token != NULL) {
+		tokens[argc++] = token;
+		//token = strtok_r(file_name_copy, " ", &save_ptr); 
+		token = strtok_r(NULL, " ", &save_ptr); 
+	}
+
+	if__->rsp -= 8;
+
+	// 인자들을 역순으로 스택에 저장
+	for (int i=argc-1; i>=0 ;i--) {
+		size_t arg_len = (strlen(tokens[i]) + 1);
+		if__->rsp -= arg_len;
+		memcpy((void*)if__->rsp, tokens[i], arg_len);
+
+		tokens_addr[i] = (char*)if__->rsp; // argv 포인터들을 배열에 저장
+	}
+
+	//
+	if__->rsp = ((uintptr_t)(if__->rsp) & ~0x0F); 
+
+    // NULL 포인터 sentinel
+    if__->rsp -= sizeof(char *);
+    *(char **)if__->rsp = NULL;
+
+    // argv 포인터들을 스택에 저장
+    for (idx = argc - 1; idx >= 0; idx--) {
+        if__->rsp -= sizeof(char *);
+        *(char **)if__->rsp = tokens_addr[idx];
+    }
+
+	if__->R.rdi = argc;
+	if__->R.rsi = if__->rsp;
+	
+    // fake return address (0)
+    if__->rsp -= sizeof(void *);
+    *(void **)if__->rsp = 0;
+    //free(argv);
+}
 
 /* Checks whether PHDR describes a valid, loadable segment in
  * FILE and returns true if so, false otherwise. */
