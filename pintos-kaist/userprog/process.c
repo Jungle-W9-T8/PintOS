@@ -87,8 +87,9 @@ initd (void *f_name) {
 tid_t
 process_fork (const char *name, struct intr_frame *if_) {
 	/* Clone current thread to new thread.*/
+	
 	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+			PRI_DEFAULT, __do_fork, if_);
 }
 
 #ifndef VM
@@ -103,11 +104,10 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
-	if(is_kern_pte(parent->pml4) == true) return false;
-	
+	if(is_kern_pte(pte) == true) return false;
+	if(is_kernel_vaddr(va) == true) return true;
 	/* 2. Resolve VA from the parent's page map level 4. */
-	parent_page = pml4_get_page (parent->pml4, va);
-
+	parent_page = pml4_get_page (pte, va);
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
@@ -117,16 +117,14 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
 	memcpy(newpage, parent_page, PGSIZE);
-	writable = true;
+	writable = is_writable(pte);
 	// writeable 확인하는 함수 아직 모름, 기본을 일단 true로 던지고 나중에 수정 할거다
 	
-
-
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
  	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
-		//palloc_free_page(newpage);
+		palloc_free_page(newpage);
 		return false;
 	}
 	return true;
@@ -142,9 +140,10 @@ __do_fork (void *aux) {
 	struct intr_frame if_;
 	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
+
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
 	// 부모의 인터럽트 프레임을 쓸 수 있도록 만들어주기
-	struct intr_frame *parent_if = &parent->tf;
+	struct intr_frame *parent_if = (struct intr_frame*) aux;
 	current->parent = parent;
 	list_push_back(&parent->children, &current->elem);
 	bool succ = true;
@@ -179,11 +178,11 @@ __do_fork (void *aux) {
 		goto error;
 #endif
 
-	for(int i = 0; i < 64; i++)
-	{
-		if(parent->fd_table[i] == NULL) continue;
-		current->fd_table[i] = file_duplicate(parent->fd_table[i]);
-	}
+	// for(int i = 0; i < 64; i++)
+	// {
+	// 	if(parent->fd_table[i] == NULL) continue;
+	// 	// current->fd_table[i] = file_duplicate(parent->fd_table[i]); todo: fork 통과시 주석 해제하고 문제 해결
+	// }
 	/* TODO: Your code goes here.
 	 * TODO: Hint) To duplicate the file object, use `file_duplicate`
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
@@ -194,7 +193,7 @@ __do_fork (void *aux) {
 
 	/* Finally, switch to the newly created process. */
 	if (succ)
-		do_iret (&if_);
+		do_iret (&current->tf);
 error:
 	thread_exit ();
 }
