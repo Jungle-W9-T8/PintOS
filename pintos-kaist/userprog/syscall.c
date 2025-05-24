@@ -201,14 +201,16 @@ void exit(int status)
 tid_t fork (const char *thread_name)
 {
 	struct thread *curr = thread_current();
-	tid_t newThread = 0;
-	newThread = process_fork(thread_name, &curr->tf);
+	tid_t new_thread = 0;
+	struct intr_frame if_;
+	memcpy(&if_, &curr->tf, sizeof(struct intr_frame));
+	new_thread = process_fork(thread_name, &if_);
 	
-	while(newThread == 0) {}
+	while (new_thread == 0) {}
 
-	if(newThread < 0)
+	if (new_thread < 0)
 		return TID_ERROR; 
-	return newThread;
+	return new_thread;
 }
 
 
