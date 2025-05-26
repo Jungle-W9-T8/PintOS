@@ -228,7 +228,7 @@ thread_create (const char *name, int priority,
 
 
 	// userprog 확장을 위한 추가된 쓰레드 멤버변수 초기화 과정
-	t->parentThread = NULL;
+	t->parent = NULL;
 	list_init(&t->siblingThread);
 
 	// 스레드를 READY 상태로 전환하고 ready_list에 삽입하기
@@ -237,6 +237,8 @@ thread_create (const char *name, int priority,
 	/** project1-Priority Scheduling */
 	if(t->priority > thread_current()->priority)
 		thread_yield();
+
+	list_push_back(&thread_current()->children, &t->child_elem);
 
 	return tid;								// 생성된 스레드의 ID 반환
 }
@@ -751,6 +753,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 
 	/* Semaphore */
 	sema_init(&t->sema_wait, 0);
+	sema_init(&t->sema_exit, 0);
+	sema_init(&t->sema_load, 0);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

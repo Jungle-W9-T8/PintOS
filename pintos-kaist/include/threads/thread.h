@@ -104,6 +104,7 @@ struct thread {
 	struct list_elem d_elem;            /* Donations List element. */
 
 	struct file *fd_table[64];
+	struct file *running;
 	struct thread *parentThread;
 	struct list siblingThread;
 	struct list_elem childThread;
@@ -113,11 +114,17 @@ struct thread {
 
 	/* relations */
 	struct thread *parent;
+	struct intr_frame parent_if;
 	struct list children;
+	struct list_elem child_elem;
 
 	/* semaphore */
 	struct semaphore *sema_wait;
-	uint64_t *pml4;                     /* Page map level 4 */
+	struct semaphore *sema_exit;
+	struct semaphore *sema_load;
+
+	/* Page map level 4 */
+	uint64_t *pml4;            
 
 
 #ifdef USERPROG

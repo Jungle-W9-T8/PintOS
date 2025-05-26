@@ -89,7 +89,7 @@ syscall_handler (struct intr_frame *f) {
 	case SYS_FORK:
 		if(f->R.rdi != NULL)
 		{
-			f->R.rax = fork(f->R.rdi);
+			f->R.rax = fork(f->R.rdi, f);
 		}
 		else
 			exit(-1);
@@ -188,29 +188,38 @@ void halt(void)
 void exit(int status)
 {
     struct thread *curr = thread_current();
-    if (curr->parent != NULL)
-    {
-        sema_up(&curr->sema_wait);
-        curr->status = status;
-        sema_down(&curr->parent->sema_wait);
-    }
+	curr->status = status;
+    // if (curr->parent != NULL)
+    // {
+    //     sema_up(&curr->sema_wait);
+    //     curr->status = status;
+    //     sema_down(&curr->sema_exit);
+    // }
     printf("%s: exit(%d)\n", curr->name, status);
-    thread_exit();
+    // thread_exit();
+	process_exit();
 }
 
-tid_t fork (const char *thread_name)
+/*
+1. 유저 영역에 있을 때의 intr_frame을 전달하기 위해 fork 되자마자 inrt_frame 복제 후 저장
+2. 자식 스레드 생성
+3. 자식의 load()가 끝날 때까지 대기
+4. 자식의 스레드 아이디 반환
+*/
+tid_t fork (const char *thread_name, struct intr_frame *f)
 {
-	struct thread *curr = thread_current();
-	tid_t new_thread = 0;
-	struct intr_frame if_;
-	memcpy(&if_, &curr->tf, sizeof(struct intr_frame));
-	new_thread = process_fork(thread_name, &if_);
+	return process_fork(thread_name, f);
+	// struct thread *curr = thread_current();
+	// tid_t new_thread = 0;
+	// struct intr_frame if_;
+	// memcpy(&if_, &curr->tf, sizeof(struct intr_frame)); // fork 호출 시점에 바로 intr_frame 복사
+	// new_thread = process_fork(thread_name, &if_);
 	
-	while (new_thread == 0) {}
+	// // sema_down(curr->sema_load);
 
-	if (new_thread < 0)
-		return TID_ERROR; 
-	return new_thread;
+	// if (new_thread < 0)
+	// 	return TID_ERROR;
+	// return new_thread;
 }
 
 
@@ -220,8 +229,8 @@ int exec(const char *cmd_line)
 
 	char *package_cmd;
 	package_cmd = palloc_get_page(PAL_ZERO);
-
-	strlcpy(package_cmd, cmd_line, strlen(cmd_line) + 1);
+	if (package_cmd == NULL) exit(-1);
+	strlcpy(package_cmd, cmd_line, PGSIZE);
 
 	int result = process_exec(package_cmd);
 	if (result == -1) return result;
@@ -229,25 +238,7 @@ int exec(const char *cmd_line)
 
 
 int wait (tid_t pid) {
-    struct thread *cur = thread_current();
-    struct thread *child = NULL;
-    struct list_elem *e;
-    int child_status;
-
-    for (e = list_begin (&cur->children); e != list_end (&cur->children); e = list_next (e)) {
-        struct thread *result = list_entry (e, struct thread, elem);
-        if (result->tid = pid)
-        {
-            child = result;
-            child_status = child->status;
-            break;
-        }
-    }
-
-    if (child == NULL) return -1;
-    sema_down (&child->sema_wait);
-    sema_up (&cur->sema_wait);
-    return child_status;
+	return process_wait(pid);
 }
 
 bool create(const char *file, unsigned initial_size)

@@ -22,4 +22,6 @@ void process_exit (void);
 void processOff();
 void process_activate (struct thread *next);
 
+struct thread *get_child_thread (int pid);
+
 #endif /* userprog/process.h */
