@@ -192,6 +192,8 @@ thread_create (const char *name, int priority,
 	//struct kernel_thread_frame *kf;
 	tid_t tid;
 
+	struct thread *curr = thread_current();
+
 	ASSERT (function != NULL);			// 실행할 함수는 NULL일 수 없음
 
 	/* 1. 스레드 구조체 메모리 할당 및 0으로 초기화 */
@@ -226,7 +228,9 @@ thread_create (const char *name, int priority,
 	t->fd_table[2] = stderr;
 	t->next_fd = 3;
 
-
+	list_push_back(&curr->children, &t->my_elem);
+	printf("%p", &curr->children);
+	printf("%p", &t->my_elem);
 	// userprog 확장을 위한 추가된 쓰레드 멤버변수 초기화 과정
 	t->parentThread = NULL;
 	list_init(&t->siblingThread);
@@ -497,7 +501,6 @@ thread_exit (void) {
 
 #ifdef USERPROG
 	processOff();
-	processOff();
 	process_exit ();
 #endif
 
@@ -746,7 +749,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->next_fd = 3;
 
 	/* Relations */
-	t->parent = NULL;
+	// t->parent = NULL;
 	list_init(&t->children);
 
 	/* Semaphore */

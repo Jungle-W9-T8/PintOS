@@ -116,7 +116,7 @@ struct thread {
 	/* relations */
 	struct thread *parent;
 	struct list children;
-	struct list_elem child;
+	struct list_elem my_elem;
 
 	/* semaphore */
 	struct semaphore *sema_wait;
@@ -148,6 +148,10 @@ struct thread {
 	unsigned magic;                     /* Detects stack overflow. */
 
 	int64_t wakeup_tick;               /* 깨어나기까지 남은 시간 */ 
+};
+
+struct fork_info {
+	struct thread *parent;
 };
 
 /* If false (default), use round-robin scheduler.

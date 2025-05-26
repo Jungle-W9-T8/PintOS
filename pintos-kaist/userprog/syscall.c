@@ -189,12 +189,7 @@ void halt(void)
 void exit(int status)
 {
     struct thread *curr = thread_current();
-    if (curr->parent != NULL)
-    {
-        sema_up(&curr->sema_wait);
-        curr->status = status;
-        sema_down(&curr->parent->sema_wait);
-    }
+	curr->exit_status = status;
     printf("%s: exit(%d)\n", curr->name, status);
     thread_exit();
 }
@@ -223,25 +218,7 @@ int exec(const char *cmd_line)
 
 
 int wait (tid_t pid) {
-    struct thread *cur = thread_current();
-    struct thread *child = NULL;
-    struct list_elem *e;
-    int child_status;
-
-    for (e = list_begin (&cur->children); e != list_end (&cur->children); e = list_next (e)) {
-        struct thread *result = list_entry (e, struct thread, elem);
-        if (result->tid = pid)
-        {
-            child = result;
-            child_status = child->status;
-            break;
-        }
-    }
-
-    if (child == NULL) return -1;
-    sema_down (&child->sema_wait);
-    sema_up (&cur->sema_wait);
-    return child_status;
+	return process_wait(pid);
 }
 
 bool create(const char *file, unsigned initial_size)
@@ -294,7 +271,7 @@ int read(int fd, void *buffer, unsigned size)
 {
 	if ((buffer == NULL) || !(pml4_get_page(thread_current()->pml4, buffer))) exit(-1);
 
-	if(!is_user_vaddr(buffer)) exit(-1); // write-bad-ptr 구현
+	// if(!is_user_vaddr(buffer)) exit(-1); // write-bad-ptr 구현
 
 	if(fd == 0)
 	{
@@ -315,9 +292,11 @@ int read(int fd, void *buffer, unsigned size)
 // 콘솔 출력을 수행하거나 파일에 직접 작성한다.
 int write(int fd, const void *buffer, unsigned size)
 {
+	if ((buffer == NULL) || !(pml4_get_page(thread_current()->pml4, buffer))) exit(-1);
+
 	if(fd == 0) exit(-1);
 	if(fd >= 64) exit(-1);
-	if(!is_user_vaddr(buffer)) exit(-1); // write-bad-ptr 구현
+	// if(!is_user_vaddr(buffer)) exit(-1); // write-bad-ptr 구현
 
 	if(fd == 1)
 	{

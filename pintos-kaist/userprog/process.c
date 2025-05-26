@@ -37,6 +37,7 @@ void stack_update(int argc, char* argv[], void **stackptr)
 static void
 process_init (void) {
 	struct thread *current = thread_current ();
+	// sema_init(&current->sema_load, 0);
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
@@ -88,14 +89,22 @@ tid_t
 process_fork (const char *name, struct intr_frame *if_) {
 	/* Clone current thread to new thread.*/
 	struct thread *curr = thread_current();
-	// memcpy(&curr->parent_if, if_, sizeof(struct intr_frame));
+	memcpy(&curr->parent_if, if_, sizeof(struct intr_frame));
 	
-	tid_t tid = thread_create (name, PRI_DEFAULT, __do_fork, curr);
-	if (tid == TID_ERROR) return TID_ERROR;
+	struct fork_info *info = palloc_get_page(PAL_ZERO);
+	if (info == NULL) return TID_ERROR;
+	info->parent = curr;
+
+	tid_t tid = thread_create (name, PRI_DEFAULT, __do_fork, info);
+	if (tid == TID_ERROR) {
+		palloc_free_page(info);
+		return TID_ERROR;
+	}
+
+	sema_down(&curr->sema_load);
 
 	struct thread *child = get_child_thread(tid);
-
-	sema_down(child->sema_load);
+	if (child->exit_status == TID_ERROR) return TID_ERROR;
 
 	return tid;
 }
@@ -112,14 +121,16 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
-	if(is_kern_pte(pte) == true) return false;
-	if(is_kernel_vaddr(va) == true) return true;
+	// if(is_kern_pte(pte) == true) return false;
+	if(is_kernel_vaddr(va)) return true;
 	/* 2. Resolve VA from the parent's page map level 4. */
-	parent_page = pml4_get_page (pte, va);
+	parent_page = pml4_get_page (parent->pml4, va);
+	if (parent_page == NULL) return false;
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
-	newpage = palloc_get_page(PAL_USER);
+	newpage = palloc_get_page(PAL_USER | PAL_ZERO);
+	if (newpage == NULL) return false;
 
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
@@ -145,15 +156,14 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
  *       this function. */
 static void
 __do_fork (void *aux) {
-	struct thread *parent = (struct thread *) aux;
+	struct fork_info *info = (struct fork_info *) aux;
+	struct thread *parent = info->parent;
 	struct thread *current = thread_current ();
-	struct intr_frame if_ = parent->parent_if; // 부모가 유저모드에서 fork 호출한 시점의 intr_frame 
-	if_.R.rax = 0; // 반환값 0으로 초기화
-
-	/* 1. 부모 - 자식 연결 */
-	current->parent = parent;
-	list_push_back(&parent->children, &current->elem);
+	struct intr_frame if_;
 	bool succ = true;
+	
+	memcpy(&if_, &parent->parent_if, sizeof(struct intr_frame));
+	if_.R.rax = 0; //자식 반환값 0으로 초기화
 
 	/* 2. Duplicate PT */
 	// 자식 프로세스의 페이지 테이블에게 복제한 값을 배치해야함
@@ -170,28 +180,52 @@ __do_fork (void *aux) {
 	if (!pml4_for_each (parent->pml4, duplicate_pte, parent))
 		goto error;
 #endif
+	process_init ();
+
 	/* 3. fdt 복사 */
 	for (int i = 0; i < 64; i++)
 	{
-		if(parent->fd_table[i] == NULL) continue;
-		current->fd_table[i] = file_duplicate(parent->fd_table[i]); // todo: fork 통과시 주석 해제하고 문제 해결
+		struct file *file = parent->fd_table[i];
+		if (parent->fd_table[i] == NULL) continue;
+		if (i > 2) file = file_duplicate(file);
+		current->fd_table[i] = file;
 	}
 	current->next_fd = parent->next_fd;
+
+	// for (int fd = 0; fd < 64; fd++)
+	// {
+	// 	if (fd <= 1)
+	// 		current->fd_table[fd] = parent->fd_table[fd];
+	// 	else
+	// 	{
+	// 		if (parent->fd_table[fd] != NULL)
+	// 		{
+	// 			if (parent->fd_table[fd] == stdin || parent->fd_table[fd] == stdout)
+	// 				current->fd_table[fd] = parent->fd_table[fd];
+	// 			else
+	// 				current->fd_table[fd] = file_duplicate(parent->fd_table[fd]);
+	// 		}
+	// 	}
+	// }
 	/* TODO: Your code goes here.
 	 * TODO: Hint) To duplicate the file object, use `file_duplicate`
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
 	
-	sema_up(&current->sema_load);
-	process_init ();
+	sema_up(&parent->sema_load);
+
+	palloc_free_page(info);
 
 	/* Finally, switch to the newly created process. */
 	if (succ)
 		do_iret (&if_);
 error:
-	sema_up(&current->sema_load);
+	succ = false;
+	sema_up(&parent->sema_load);
+	// sys_exit(TID_ERROR);
 	thread_exit ();
+	// exit(-1);
 }
 
 /* Switch the current execution context to the f_name.
@@ -228,39 +262,39 @@ process_exec (void *f_name) {
 	success = load (file_name, &_if);
 
 	/* 스택 포인터, karg->argc, karg->argv 가 이미 정의되어 있다고 가정 */
-char *argv_u[32];   /* argc 최대 32라 가정 */
+	char *argv_u[32];   /* argc 최대 32라 가정 */
 
-/* 1) 문자열을 역순으로 스택에 복사하고, 복사한 위치(=유저 스택 어드레스)를 argv_u에 저장 */
+	/* 1) 문자열을 역순으로 스택에 복사하고, 복사한 위치(=유저 스택 어드레스)를 argv_u에 저장 */
 
-// 페이지 경계에 맞닿는 상황을 제거해야한다. 그래서 rsp를 시작 전에 좀 더 내려서 시작하게끔 조정
-_if.rsp -= 8;
+	// 페이지 경계에 맞닿는 상황을 제거해야한다. 그래서 rsp를 시작 전에 좀 더 내려서 시작하게끔 조정
+	_if.rsp -= 8;
 
-for (int i = argc - 1; i >= 0; i--) {
-    int len = strlen(args_ptr[i]) + 1;
-    _if.rsp -= len;                         // 스택 포인터 내리고
-    memcpy((void*)_if.rsp, args_ptr[i], len); 
-    argv_u[i] = (char*)_if.rsp;            // 복사된 문자열의 주소 저장
-}
+	for (int i = argc - 1; i >= 0; i--) {
+		int len = strlen(args_ptr[i]) + 1;
+		_if.rsp -= len;                         // 스택 포인터 내리고
+		memcpy((void*)_if.rsp, args_ptr[i], len); 
+		argv_u[i] = (char*)_if.rsp;            // 복사된 문자열의 주소 저장
+	}
 
-/* 2) 스택 워드 정렬 (필요하다면) */
-_if.rsp = (uintptr_t)_if.rsp & ~0xF;
+	/* 2) 스택 워드 정렬 (필요하다면) */
+	_if.rsp = (uintptr_t)_if.rsp & ~0xF;
 
-/* 3) NULL sentinel */
-_if.rsp -= sizeof(char*);
- *(char**)_if.rsp = NULL;
+	/* 3) NULL sentinel */
+	_if.rsp -= sizeof(char*);
+	*(char**)_if.rsp = NULL;
 
-/* 4) argv_u[]에 모아둔 주소를 스택에 푸시 */
-for (int i = argc - 1; i >= 0; i--) {
-    _if.rsp -= sizeof(char*);
-    *(char**)_if.rsp = argv_u[i];
-}
+	/* 4) argv_u[]에 모아둔 주소를 스택에 푸시 */
+	for (int i = argc - 1; i >= 0; i--) {
+		_if.rsp -= sizeof(char*);
+		*(char**)_if.rsp = argv_u[i];
+	}
 
-_if.R.rsi = _if.rsp;
+	_if.R.rsi = _if.rsp;
 
-_if.rsp -= sizeof(void*);
-*(void**)_if.rsp = 0;   /* fake return address */
+	_if.rsp -= sizeof(void*);
+	*(void**)_if.rsp = 0;   /* fake return address */
 
-_if.R.rdi = argc;
+	_if.R.rdi = argc;
 
 	palloc_free_page (file_name);
 
@@ -289,7 +323,7 @@ void processOff()
 }
 
 int
-process_wait (tid_t child_tid UNUSED) {
+process_wait (tid_t child_tid) {
 	// 힌트 번역
 	// process wait 제대로 구현하기 전까지, 차라리 무한루프를 만드세요.
 	// process wait 구현은 system call 강의 14분대에서 확인하세요.
@@ -297,11 +331,22 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	while(isWaitOn)
-	{
-		
-	}
-	return -1;
+
+	struct thread *child = get_child_thread(child_tid);
+	// if (child == NULL) {
+	// 	while(isWaitOn)
+	// 	{
+			
+	// 	}
+	// 	return -1;
+	// }
+
+	sema_down(&child->sema_wait);
+	int exit_status = child->exit_status;
+	list_remove(&child->my_elem); // todo: check
+	sema_up(&child->sema_exit);
+
+	return exit_status;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -312,8 +357,20 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
+	
+	for (int i = 2; i < 64; i++) {
+		close(i);
+	}
+	*curr->fd_table = NULL;
+	file_close(curr->running); // todo: check
 
 	process_cleanup ();
+
+	if (curr->parent != NULL)
+    {
+        sema_up(&curr->sema_wait);
+        sema_down(&curr->sema_exit);
+    }
 }
 
 /* Free the current process's resources. */
@@ -734,7 +791,7 @@ struct thread *get_child_thread (int tid)
 	struct thread *curr = thread_current();
 	struct list *children = &curr->children;
 	for (struct list_elem *e = list_begin(children); e != list_end(children); e = list_next(e)) {
-		struct thread *child = list_entry(e, struct thread, child);
+		struct thread *child = list_entry(e, struct thread, my_elem);
 		if (child->tid == tid) return child;
 	}
 
