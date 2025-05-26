@@ -751,6 +751,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 
 	/* Semaphore */
 	sema_init(&t->sema_wait, 0);
+	sema_init(&t->sema_exit, 0);
+	sema_init(&t->sema_load, 0);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

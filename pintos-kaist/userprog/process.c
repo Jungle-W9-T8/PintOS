@@ -87,9 +87,17 @@ initd (void *f_name) {
 tid_t
 process_fork (const char *name, struct intr_frame *if_) {
 	/* Clone current thread to new thread.*/
+	struct thread *curr = thread_current();
+	// memcpy(&curr->parent_if, if_, sizeof(struct intr_frame));
 	
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, if_);
+	tid_t tid = thread_create (name, PRI_DEFAULT, __do_fork, curr);
+	if (tid == TID_ERROR) return TID_ERROR;
+
+	struct thread *child = get_child_thread(tid);
+
+	sema_down(child->sema_load);
+
+	return tid;
 }
 
 #ifndef VM
@@ -137,30 +145,15 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
  *       this function. */
 static void
 __do_fork (void *aux) {
-	struct intr_frame if_;
 	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
+	struct intr_frame if_ = parent->parent_if; // 부모가 유저모드에서 fork 호출한 시점의 intr_frame 
+	if_.R.rax = 0; // 반환값 0으로 초기화
 
-	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	// 부모의 인터럽트 프레임을 쓸 수 있도록 만들어주기
-	struct intr_frame *parent_if = (struct intr_frame*) aux;
+	/* 1. 부모 - 자식 연결 */
 	current->parent = parent;
 	list_push_back(&parent->children, &current->elem);
 	bool succ = true;
-
-
-	/* 1. Read the cpu context to local stack. */
-	// 내용을 지역변수에 담기
-	memcpy (&if_, parent_if, sizeof (struct intr_frame));
-
-	current->tf.R.rbx = if_.R.rbx;
-	current->tf.rsp = if_.rsp;
-	current->tf.R.rbp = if_.R.rbp;
-	current->tf.R.r12 = if_.R.r12;
-	current->tf.R.r13 = if_.R.r13;
-	current->tf.R.r14 = if_.R.r14;
-	current->tf.R.r15 = if_.R.r15;
-
 
 	/* 2. Duplicate PT */
 	// 자식 프로세스의 페이지 테이블에게 복제한 값을 배치해야함
@@ -177,24 +170,27 @@ __do_fork (void *aux) {
 	if (!pml4_for_each (parent->pml4, duplicate_pte, parent))
 		goto error;
 #endif
-
-	// for(int i = 0; i < 64; i++)
-	// {
-	// 	if(parent->fd_table[i] == NULL) continue;
-	// 	// current->fd_table[i] = file_duplicate(parent->fd_table[i]); todo: fork 통과시 주석 해제하고 문제 해결
-	// }
+	/* 3. fdt 복사 */
+	for (int i = 0; i < 64; i++)
+	{
+		if(parent->fd_table[i] == NULL) continue;
+		current->fd_table[i] = file_duplicate(parent->fd_table[i]); // todo: fork 통과시 주석 해제하고 문제 해결
+	}
+	current->next_fd = parent->next_fd;
 	/* TODO: Your code goes here.
 	 * TODO: Hint) To duplicate the file object, use `file_duplicate`
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
-
+	
+	sema_up(&current->sema_load);
 	process_init ();
 
 	/* Finally, switch to the newly created process. */
 	if (succ)
-		do_iret (&current->tf);
+		do_iret (&if_);
 error:
+	sema_up(&current->sema_load);
 	thread_exit ();
 }
 
@@ -732,6 +728,19 @@ install_page (void *upage, void *kpage, bool writable) {
 	return (pml4_get_page (t->pml4, upage) == NULL
 			&& pml4_set_page (t->pml4, upage, kpage, writable));
 }
+
+struct thread *get_child_thread (int tid)
+{
+	struct thread *curr = thread_current();
+	struct list *children = &curr->children;
+	for (struct list_elem *e = list_begin(children); e != list_end(children); e = list_next(e)) {
+		struct thread *child = list_entry(e, struct thread, child);
+		if (child->tid == tid) return child;
+	}
+
+	return NULL;
+}
+
 #else
 /* From here, codes will be used after project 3.
  * If you want to implement the function for only project 2, implement it on the

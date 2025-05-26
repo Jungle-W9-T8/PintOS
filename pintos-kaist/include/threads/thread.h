@@ -90,7 +90,8 @@ typedef int tid_t;
 struct thread {
 	/* Owned by thread.c. */
 	tid_t tid;                          /* Thread identifier. */
-	enum thread_status status;          /* Thread state. */
+	enum thread_status status;          /* Thread current state. */
+	int exit_status;                    /* Thread Exit state */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 	int64_t wakeup_ticks;				// 일어날 시각 추가
@@ -104,6 +105,7 @@ struct thread {
 	struct list_elem d_elem;            /* Donations List element. */
 
 	struct file *fd_table[64];
+	struct file *running;
 	struct thread *parentThread;
 	struct list siblingThread;
 	struct list_elem childThread;
@@ -114,11 +116,15 @@ struct thread {
 	/* relations */
 	struct thread *parent;
 	struct list children;
+	struct list_elem child;
 
 	/* semaphore */
 	struct semaphore *sema_wait;
-	uint64_t *pml4;                     /* Page map level 4 */
+	struct semaphore *sema_exit;
+	struct semaphore *sema_load;
 
+	/* Page map level 4 */
+	uint64_t *pml4;            
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -138,6 +144,7 @@ struct thread {
 
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
+	struct intr_frame parent_if;        /* Information for Parent's switching */
 	unsigned magic;                     /* Detects stack overflow. */
 
 	int64_t wakeup_tick;               /* 깨어나기까지 남은 시간 */ 

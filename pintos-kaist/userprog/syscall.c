@@ -89,6 +89,7 @@ syscall_handler (struct intr_frame *f) {
 	case SYS_FORK:
 		if(f->R.rdi != NULL)
 		{
+			memcpy(&thread_current()->parent_if, f, sizeof(struct intr_frame)); 
 			f->R.rax = fork(f->R.rdi);
 		}
 		else
@@ -201,16 +202,9 @@ void exit(int status)
 tid_t fork (const char *thread_name)
 {
 	struct thread *curr = thread_current();
-	tid_t new_thread = 0;
 	struct intr_frame if_;
-	memcpy(&if_, &curr->tf, sizeof(struct intr_frame));
-	new_thread = process_fork(thread_name, &if_);
-	
-	while (new_thread == 0) {}
-
-	if (new_thread < 0)
-		return TID_ERROR; 
-	return new_thread;
+	memcpy(&if_, &curr->parent_if, sizeof(struct intr_frame));
+	return process_fork(thread_name, &if_);
 }
 
 
