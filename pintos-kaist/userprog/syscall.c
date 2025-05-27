@@ -20,32 +20,6 @@
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *f);
 bool is_valid_user_pointer(const void *uaddr);
-void halt (void);
-void exit (int status);
- int write (int fd, const void *buffer, unsigned size);
-
-// pid_t fork (const char *thread_name);
-// int exec (const char *file);
-// int wait (pid_t pid);
-// bool create (const char *file, unsigned initial_size);
-// bool remove (const char *file);
-// int open (const char *file);
-// int filesize (int fd);
-// int read (int fd, void *buffer, unsigned size);
-// void seek (int fd, unsigned position);
-// unsigned tell (int fd);
-// void close (int fd); 
-// int dup2 (int oldfd, int newfd);
-// void *mmap (void *addr, size_t length, int writable, int fd, off_t offset);
-// void munmap (void *addr);
-// bool chdir (const char *dir);
-// bool mkdir (const char *dir);
-// bool readdir (int fd, char name[READDIR_MAX_LEN + 1]);
-// bool isdir (int fd);
-// int inumber (int fd);
-// int symlink (const char* target, const char* linkpath);
-// int mount (const char *path, int chan_no, int dev_no);
-// int umount (const char *path);
 
 /* System call.
  *
@@ -89,7 +63,8 @@ syscall_handler (struct intr_frame *f) {
 	case SYS_FORK:
 		if(f->R.rdi != NULL)
 		{
-			f->R.rax = fork(f->R.rdi, f);
+			memcpy(&thread_current()->backup_if, f, sizeof(struct intr_frame));
+			f->R.rax = fork(f->R.rdi);
 		}
 		else
 			exit(-1);
@@ -188,16 +163,14 @@ void halt(void)
 void exit(int status)
 {
     struct thread *curr = thread_current();
-	curr->status = status;
-    // if (curr->parent != NULL)
-    // {
-    //     sema_up(&curr->sema_wait);
-    //     curr->status = status;
-    //     sema_down(&curr->sema_exit);
-    // }
+    if (curr->parent != NULL)
+    {
+        //sema_up(&curr->sema_wait);
+      //  curr->exit_status = status;
+        //sema_down(&curr->parent->sema_wait);
+    }
     printf("%s: exit(%d)\n", curr->name, status);
-    // thread_exit();
-	process_exit();
+    thread_exit();
 }
 
 /*
@@ -206,20 +179,12 @@ void exit(int status)
 3. 자식의 load()가 끝날 때까지 대기
 4. 자식의 스레드 아이디 반환
 */
-tid_t fork (const char *thread_name, struct intr_frame *f)
+tid_t fork (const char *thread_name)
 {
-	return process_fork(thread_name, f);
-	// struct thread *curr = thread_current();
-	// tid_t new_thread = 0;
-	// struct intr_frame if_;
-	// memcpy(&if_, &curr->tf, sizeof(struct intr_frame)); // fork 호출 시점에 바로 intr_frame 복사
-	// new_thread = process_fork(thread_name, &if_);
-	
-	// // sema_down(curr->sema_load);
-
-	// if (new_thread < 0)
-	// 	return TID_ERROR;
-	// return new_thread;
+	// 앞의 분기점에서 backup_if를 저장하긴 했다!
+	tid_t returnTarget = process_fork(thread_name, &thread_current()->backup_if);
+	if(returnTarget == TID_ERROR) exit(-1); // 이거 맞나?..
+	return returnTarget;
 }
 
 

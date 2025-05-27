@@ -3,10 +3,10 @@
 
 #include "threads/thread.h"
 
-struct kernel_args{
-	int argc;
-	char *argv[32];
-	char raw[128];
+struct initial_args
+{
+	char *fn_copy;
+	struct thread *parent;
 };
 
 void stack_update(int argc, char* argv[], void **stackptr);
@@ -22,6 +22,6 @@ void process_exit (void);
 void processOff();
 void process_activate (struct thread *next);
 
-struct thread *get_child_thread (int pid);
+struct thread *get_child_thread (tid_t pid);
 
 #endif /* userprog/process.h */

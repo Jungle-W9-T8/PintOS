@@ -113,8 +113,9 @@ struct thread {
 	struct semaphore threadSema;
 
 	/* relations */
+	int exit_status;
 	struct thread *parent;
-	struct intr_frame parent_if;
+	struct intr_frame backup_if;
 	struct list children;
 	struct list_elem child_elem;
 

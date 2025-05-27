@@ -226,8 +226,6 @@ thread_create (const char *name, int priority,
 	t->fd_table[2] = stderr;
 	t->next_fd = 3;
 
-
-	// userprog 확장을 위한 추가된 쓰레드 멤버변수 초기화 과정
 	t->parent = NULL;
 	list_init(&t->siblingThread);
 
@@ -238,7 +236,7 @@ thread_create (const char *name, int priority,
 	if(t->priority > thread_current()->priority)
 		thread_yield();
 
-	list_push_back(&thread_current()->children, &t->child_elem);
+	//list_push_back(&thread_current()->children, &t->child_elem);
 
 	return tid;								// 생성된 스레드의 ID 반환
 }
@@ -496,10 +494,9 @@ thread_tid (void) {
 void
 thread_exit (void) {
 	ASSERT (!intr_context ());
-
 #ifdef USERPROG
 	processOff();
-	processOff();
+	//sema_up(&thread_current()->parent->sema_wait);
 	process_exit ();
 #endif
 
@@ -508,26 +505,18 @@ thread_exit (void) {
 	intr_disable ();
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
-	struct thread *curr = thread_current();
-	struct list_elem *e;
- 	for (e = list_begin (&curr->parent->children); e != list_end (&curr->parent->children); e = list_next (e)) {
- 		struct thread *result = list_entry (e, struct thread, elem);
- 		if (result->tid = curr->tid)
-		{
-			list_remove(&result->elem);
-			break;
-		}
- 	}
-	// 부모 자식 관계 끊어주기
-	curr->parent = NULL;
-
-	// curr->fd_table
-	for (int fd = 3; fd <= 64; fd++) {
-		if (curr->fd_table[fd] != NULL) {
-			file_close(curr->fd_table[fd]);
-			curr->fd_table[fd] = NULL;
-		}
-	}
+	// struct thread *curr = thread_current();
+	// struct list_elem *e;
+ 	// for (e = list_begin (&curr->parent->children); e != list_end (&curr->parent->children); e = list_next (e)) {
+ 	// 	struct thread *result = list_entry (e, struct thread, elem);
+ 	// 	if (result->tid = curr->tid)
+	// 	{
+	// 		list_remove(&result->elem);
+	// 		break;
+	// 	}
+ 	// }
+	// // 부모 자식 관계 끊어주기
+	// curr->parent = NULL;
 }
 
 /*************************************************************
@@ -735,12 +724,6 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->wait_on_lock = NULL;
 	t->base_priority = priority;
 	list_init(&t->donations);
-
-	t->threadSema.value = 1;
-	list_init(&t->threadSema.waiters);
-
-	t->threadSema.value = 1;
-	list_init(&t->threadSema.waiters);
 
 	/* File Desciptor Table 초기화 */
 	// *t->fd_table = NULL;
