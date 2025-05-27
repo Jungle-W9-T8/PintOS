@@ -76,7 +76,6 @@ initd (void *f_name) {
 #ifdef VM
 	supplemental_page_table_init (&thread_current ()->spt);
 #endif
-
 	struct initial_args *package = (struct initial_args*) f_name;
 
 	thread_current()->parent = package->parent;
@@ -85,6 +84,7 @@ initd (void *f_name) {
 	process_init ();
 	if (process_exec (package->fn_copy) < 0)
 		PANIC("Fail to launch initd\n");
+	
 	NOT_REACHED ();
 }
 
@@ -93,10 +93,13 @@ initd (void *f_name) {
 tid_t
 process_fork (const char *name, struct intr_frame *if_) {
 
+	printf("FORK STARTING\n");
 	struct thread *curr = thread_current();
 	tid_t pid = thread_create(name, PRI_DEFAULT, __do_fork, curr);
 	if (pid == TID_ERROR) return TID_ERROR;
 	sema_down(&curr->sema_load); // waiters-list의 주체는 아무 상관이 없음
+	printf("FORK COMPLTETRING\n");
+
 	return pid;
 }
 
@@ -184,14 +187,19 @@ __do_fork (void *aux) {
 	}
 	current->next_fd = parent->next_fd;
 
-	sema_up(&current->sema_load); 
+
+	current->parent = parent;
+	list_push_back(&parent->children, &current->child_elem);
+	printf("the forking is completed!\n");
+
+	sema_up(&current->parent->sema_load); 
 	process_init ();
 
 	/* Finally, switch to the newly created process. */
 	if (succ)
 		do_iret (&if_);
 error:
-	sema_up(&current->sema_load);
+	sema_up(&current->parent->sema_load);
 	thread_exit ();
 }
 
@@ -281,31 +289,24 @@ process_exec (void *f_name) {
  *
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
-int isWait = 1;
 
-void processOff()
-{
-	isWait = 0;
-}
+
 
 int
 process_wait (tid_t child_tid) {
-	// 힌트 번역
-	// process wait 제대로 구현하기 전까지, 차라리 무한루프를 만드세요.
-	// process wait 구현은 system call 강의 14분대에서 확인하세요.
-	//sema_down(&thread_current()->sema_wait);
-	while(isWait) {}
+
+	sema_down(&thread_current()->sema_wait);
+	printf("wait is activating\n");
 	struct thread *child = get_child_thread(child_tid);
     if (child == NULL)
 	{
-		printf("BAD THINGS HAPPEND\n");
+		printf("Bad things \n");
 		return -1;
 	}
-	//printf("wait start!! \n");
- 	//sema_down (&child->sema_wait);
+	//sema_down (&child->sema_wait);
 	//list_remove(&child->child_elem);
-   	//sema_up (&child->sema_exit);
-//printf("I AM OUT \n");
+   //	sema_up (&child->sema_exit);
+	printf("I AM OUT \n");
     return child->exit_status;
 }
 /* Exit the process. This function is called by thread_exit (). */
@@ -318,8 +319,9 @@ process_exit (void) {
 	}
 	//palloc_free_page(curr->fd_table);
 	//file_close(curr->running);
-
 	process_cleanup ();
+	sema_up(&curr->parent->sema_wait);
+
 	//sema_up(&curr->sema_wait);
 	//sema_down(&curr->sema_exit);
 }

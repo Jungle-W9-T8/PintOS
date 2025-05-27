@@ -68,7 +68,6 @@ syscall_handler (struct intr_frame *f) {
 				memcpy(&thread_current()->backup_if, f, sizeof(struct intr_frame));
 				f->R.rax = fork(f->R.rdi);
 			}
-
 		}
 		else
 			exit(-1);
@@ -167,12 +166,7 @@ void halt(void)
 void exit(int status)
 {
     struct thread *curr = thread_current();
-    if (curr->parent != NULL)
-    {
-        //sema_up(&curr->sema_wait);
-      //  curr->exit_status = status;
-        //sema_down(&curr->parent->sema_wait);
-    }
+    curr->exit_status = status;
     printf("%s: exit(%d)\n", curr->name, status);
     thread_exit();
 }
@@ -185,9 +179,9 @@ void exit(int status)
 */
 tid_t fork (const char *thread_name)
 {
-	// 앞의 분기점에서 backup_if를 저장하긴 했다!
 	tid_t returnTarget = process_fork(thread_name, &thread_current()->backup_if);
-	if(returnTarget == TID_ERROR) exit(-1); // 이거 맞나?..
+	if(returnTarget == TID_ERROR) exit(-1);
+	printf("FORKING COMPLETE \n");
 	return returnTarget;
 }
 
@@ -209,7 +203,10 @@ int exec(const char *cmd_line)
 
 
 int wait (tid_t pid) {
-	return process_wait(pid);
+	printf("WAITING IS STARTING \n");
+	tid_t exitNum = process_wait(pid);
+	if(exitNum == -1) printf("returned -1!\n");
+	return exitNum;
 }
 
 bool create(const char *file, unsigned initial_size)

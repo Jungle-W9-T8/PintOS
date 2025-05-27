@@ -101,17 +101,15 @@ struct thread {
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+	struct list_elem sema_elem;           
 	struct list_elem d_elem;            /* Donations List element. */
 
 	struct file *fd_table[64];
 	struct file *running;
-	struct thread *parentThread;
 	struct list siblingThread;
 	struct list_elem childThread;
 	int next_fd;
 	
-	struct semaphore threadSema;
-
 	/* relations */
 	int exit_status;
 	struct thread *parent;
@@ -120,9 +118,9 @@ struct thread {
 	struct list_elem child_elem;
 
 	/* semaphore */
-	struct semaphore *sema_wait;
-	struct semaphore *sema_exit;
-	struct semaphore *sema_load;
+	struct semaphore sema_wait;
+	struct semaphore sema_exit;
+	struct semaphore sema_load;
 
 	/* Page map level 4 */
 	uint64_t *pml4;            

@@ -495,9 +495,10 @@ void
 thread_exit (void) {
 	ASSERT (!intr_context ());
 #ifdef USERPROG
-	processOff();
-	//sema_up(&thread_current()->parent->sema_wait);
+
+	printf("%s is quit \n", &thread_current()->name);
 	process_exit ();
+
 #endif
 
 	/* Just set our status to dying and schedule another process.
