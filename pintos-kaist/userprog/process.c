@@ -174,15 +174,12 @@ __do_fork (void *aux) {
 		goto error;
 #endif
 
-	// fdt 복사
 	for (int i = 3; i < 64; i++)
 	{
 		if (parent->fd_table[i] == NULL) continue;
 		current->fd_table[i] = file_duplicate(parent->fd_table[i]);
 	}
 	current->next_fd = parent->next_fd;
-
-
 	current->parent = parent;
 	list_push_back(&parent->children, &current->child_elem);
 
