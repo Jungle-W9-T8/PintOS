@@ -495,29 +495,29 @@ void
 thread_exit (void) {
 	ASSERT (!intr_context ());
 #ifdef USERPROG
-
-	printf("%s is quit \n", &thread_current()->name);
 	process_exit ();
-
 #endif
+
+	// TO DO : 부모자식 연결 끊고 제거
+	struct thread *curr = thread_current();
+	struct list_elem *e;
+ 	 for (e = list_begin (&curr->parent->children); e != list_end (&curr->parent->children); e = list_next (e)) {
+ 	 	struct thread *result = list_entry (e, struct thread, child_elem);
+ 	 	if (result->tid == curr->tid)
+	 	{
+	 		list_remove(&result->child_elem);
+	 		break;
+	 	}
+ 	 }
+	 // 부모 자식 관계 끊어주기
+	 curr->parent = NULL;
 
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
-	// struct thread *curr = thread_current();
-	// struct list_elem *e;
- 	// for (e = list_begin (&curr->parent->children); e != list_end (&curr->parent->children); e = list_next (e)) {
- 	// 	struct thread *result = list_entry (e, struct thread, elem);
- 	// 	if (result->tid = curr->tid)
-	// 	{
-	// 		list_remove(&result->elem);
-	// 		break;
-	// 	}
- 	// }
-	// // 부모 자식 관계 끊어주기
-	// curr->parent = NULL;
+
 }
 
 /*************************************************************

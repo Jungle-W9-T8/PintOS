@@ -93,13 +93,10 @@ initd (void *f_name) {
 tid_t
 process_fork (const char *name, struct intr_frame *if_) {
 
-	printf("FORK STARTING\n");
 	struct thread *curr = thread_current();
 	tid_t pid = thread_create(name, PRI_DEFAULT, __do_fork, curr);
 	if (pid == TID_ERROR) return TID_ERROR;
 	sema_down(&curr->sema_load); // waiters-list의 주체는 아무 상관이 없음
-	printf("FORK COMPLTETRING\n");
-
 	return pid;
 }
 
@@ -190,7 +187,6 @@ __do_fork (void *aux) {
 
 	current->parent = parent;
 	list_push_back(&parent->children, &current->child_elem);
-	printf("the forking is completed!\n");
 
 	sema_up(&current->parent->sema_load); 
 	process_init ();
@@ -296,17 +292,15 @@ int
 process_wait (tid_t child_tid) {
 
 	sema_down(&thread_current()->sema_wait);
-	printf("wait is activating\n");
 	struct thread *child = get_child_thread(child_tid);
     if (child == NULL)
 	{
-		printf("Bad things \n");
 		return -1;
 	}
 	//sema_down (&child->sema_wait);
 	//list_remove(&child->child_elem);
    //	sema_up (&child->sema_exit);
-	printf("I AM OUT \n");
+   sema_up(&child->sema_exit);
     return child->exit_status;
 }
 /* Exit the process. This function is called by thread_exit (). */
@@ -315,15 +309,16 @@ void
 process_exit (void) {
 	struct thread *curr = thread_current ();
 	for (int i = 2; i < 64; i++) {
-		if(curr->fd_table[i] != NULL) close(i);
+		//if(curr->fd_table[i] != NULL) close(i);
 	}
 	//palloc_free_page(curr->fd_table);
 	//file_close(curr->running);
 	process_cleanup ();
+	// 얘 여기 있으면 alarm들이 뻗는뎅
 	sema_up(&curr->parent->sema_wait);
 
 	//sema_up(&curr->sema_wait);
-	//sema_down(&curr->sema_exit);
+	sema_down(&curr->sema_exit); 
 }
 
 /* Free the current process's resources. */

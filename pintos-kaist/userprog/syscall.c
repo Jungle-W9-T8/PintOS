@@ -181,7 +181,6 @@ tid_t fork (const char *thread_name)
 {
 	tid_t returnTarget = process_fork(thread_name, &thread_current()->backup_if);
 	if(returnTarget == TID_ERROR) exit(-1);
-	printf("FORKING COMPLETE \n");
 	return returnTarget;
 }
 
@@ -203,7 +202,6 @@ int exec(const char *cmd_line)
 
 
 int wait (tid_t pid) {
-	printf("WAITING IS STARTING \n");
 	tid_t exitNum = process_wait(pid);
 	if(exitNum == -1) printf("returned -1!\n");
 	return exitNum;
@@ -280,9 +278,10 @@ int read(int fd, void *buffer, unsigned size)
 // 콘솔 출력을 수행하거나 파일에 직접 작성한다.
 int write(int fd, const void *buffer, unsigned size)
 {
+	if ((buffer == NULL) || !(pml4_get_page(thread_current()->pml4, buffer))) exit(-1);
+
 	if(fd == 0) exit(-1);
 	if(fd >= 64) exit(-1);
-	if(!is_user_vaddr(buffer)) exit(-1); // write-bad-ptr 구현
 
 	if(fd == 1)
 	{
