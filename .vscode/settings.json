@@ -29,6 +29,7 @@
         "file.h": "c",
         "array": "c",
         "initializer_list": "c",
-        "utility": "c"
+        "utility": "c",
+        "mmu.h": "c"
     }
 }
