@@ -281,7 +281,6 @@ thread_sleep (int64_t wakeup_tick)
     // 	list_remove(&cur->elem); // 포함되었다면 제거
 }
 
-
 static bool 
 cmp_wakeup_tick(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
     struct thread *ta = list_entry(a, struct thread, elem);

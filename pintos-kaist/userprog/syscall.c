@@ -251,6 +251,8 @@ int open(const char *file)
 	curr->fd_table[i] = targetFile;
 	curr->next_fd += 1;
 
+
+
 	// 생각해보니.. fd를 64개 다쓰면? 그리고, 재활용가능한 fd가 있다면?
 	// 연결된 번호를 반환하도록 하기
 	return i;

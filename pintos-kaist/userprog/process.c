@@ -310,7 +310,7 @@ process_exit (void) {
 	}
 
 	//palloc_free_page(curr->fd_table);
-	//file_close(curr->running);
+	file_close(curr->running);
 	process_cleanup ();
 	sema_up(&curr->sema_wait);
 	sema_down(&curr->sema_exit); 
@@ -524,7 +524,6 @@ load (const char *file_name, struct intr_frame *if_) {
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
 	return success;
 }
 
