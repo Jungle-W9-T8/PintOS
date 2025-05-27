@@ -102,19 +102,23 @@ struct thread {
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+	struct list_elem sema_elem;           
 	struct list_elem d_elem;            /* Donations List element. */
 
 	struct file *fd_table[64];
 	struct file *running;
 	struct thread *parentThread;
+	struct file *running;
 	struct list siblingThread;
 	struct list_elem childThread;
 	int next_fd;
 
 	/* relations */
+	int exit_status;
 	struct thread *parent;
+	struct intr_frame backup_if;
 	struct list children;
-	struct list_elem my_elem;
+	struct list_elem child_elem;
 
 	/* semaphore */
 	struct semaphore sema_wait;

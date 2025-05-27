@@ -3,18 +3,11 @@
 
 #include "threads/thread.h"
 
-struct kernel_args{
-	int argc;
-	char *argv[32];
-	char raw[128];
-};
-
-struct initd_args {
-	char *file_name;
+struct initial_args
+{
+	char *fn_copy;
 	struct thread *parent;
 };
-
-void stack_update(int argc, char* argv[], void **stackptr);
 
 tid_t process_create_initd (const char *file_name);
 tid_t process_fork (const char *name, struct intr_frame *if_);
@@ -27,6 +20,6 @@ void process_exit (void);
 void processOff();
 void process_activate (struct thread *next);
 
-struct thread *get_child_thread (int tid);
+struct thread *get_child_thread (tid_t pid);
 
 #endif /* userprog/process.h */

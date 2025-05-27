@@ -29,11 +29,6 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
-void stack_update(int argc, char* argv[], void **stackptr)
-{
-}
-
-
 /* General process initializer for initd and other process. */
 static void
 process_init (void) {
@@ -46,6 +41,8 @@ process_init (void) {
  * before process_create_initd() returns. Returns the initd's
  * thread id, or TID_ERROR if the thread cannot be created.
  * Notice that THIS SHOULD BE CALLED ONCE. */
+
+
 tid_t
 process_create_initd (const char *file_name) {
 	char *fn_copy, *ptr, *nextptr;
@@ -59,12 +56,15 @@ process_create_initd (const char *file_name) {
 	strlcpy (fn_copy, file_name, PGSIZE);
 	strlcpy (threadName, file_name, PGSIZE); 
 
-	args->file_name = fn_copy;
-	args->parent = thread_current();
+	struct initial_args *initialPackage = malloc(sizeof(struct initial_args));
+	initialPackage->fn_copy = fn_copy;
+	initialPackage->parent = thread_current();
+	
 
 	ptr = strtok_r(threadName, " \t\r\n", &nextptr);
-	tid = thread_create (ptr, PRI_DEFAULT, initd, args);
-	
+	tid = thread_create (ptr, PRI_DEFAULT, initd, initialPackage);
+
+
 	if (tid == TID_ERROR)
 	{
 		palloc_free_page(threadName);
@@ -78,22 +78,14 @@ initd (void *args) {
 #ifdef VM
 	supplemental_page_table_init (&thread_current ()->spt);
 #endif
+	struct initial_args *package = (struct initial_args*) f_name;
 
+	thread_current()->parent = package->parent;
+	list_push_back(&package->parent->children, &thread_current()->child_elem);
 	process_init ();
-
-	struct initd_args *karg = (struct initd_args *) args;
-	struct thread *parent = karg->parent;
-	struct thread *curr = thread_current();
-	
-	curr->parent = parent;
-	list_push_back(&parent->children, &curr->my_elem);
-
-	// 기존에 매개변수로 넘겼던 f_name 대신 karg의 주소를 넘겨서 _exec에서 작성하도록 하기
-	if (process_exec (karg->file_name) < 0) {
-		palloc_free_page(karg);
-		palloc_free_page(karg->file_name);
+	if (process_exec (package->fn_copy) < 0)
 		PANIC("Fail to launch initd\n");
-	}
+	
 	NOT_REACHED ();
 }
 
@@ -101,12 +93,12 @@ initd (void *args) {
  * TID_ERROR if the thread cannot be created. */
 tid_t
 process_fork (const char *name, struct intr_frame *if_) {
-	struct thread *parent = thread_current();
-	memcpy(&parent->parent_if, if_, sizeof(struct intr_frame));
-	tid_t tid = thread_create (name, PRI_DEFAULT, __do_fork, parent);
-	if (tid == TID_ERROR) return TID_ERROR;
-	sema_down(&parent->sema_load);
-	return tid;
+
+	struct thread *curr = thread_current();
+	tid_t pid = thread_create(name, PRI_DEFAULT, __do_fork, curr);
+	if (pid == TID_ERROR) return TID_ERROR;
+	sema_down(&curr->sema_load); // waiters-list의 주체는 아무 상관이 없음
+	return pid;
 }
 
 #ifndef VM
@@ -122,14 +114,16 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
 	// if(is_kern_pte(pte) == true) return false;
-	if(is_kernel_vaddr(va)) return true;
+	if(is_kernel_vaddr(va) == true) return true;
 	/* 2. Resolve VA from the parent's page map level 4. */
-	parent_page = pml4_get_page (parent->pml4, va);
+	// parent_page = pml4_get_page (pte, va);
+	parent_page = pml4_get_page (parent->pml4, va); // todo: why?? pte가 아니라 parent->pml4지? 
 	if (parent_page == NULL) return false;
+
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
-	newpage = palloc_get_page(PAL_USER | PAL_ZERO);
+	newpage = palloc_get_page(PAL_USER | PAL_ZERO); // todo: why??
 	if (newpage == NULL) return false;
 
 	/* 4. TODO: Duplicate parent's page to the new page and
@@ -143,7 +137,7 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	 *    permission. */
  	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
-		palloc_free_page(newpage);
+		// palloc_free_page(newpage);
 		return false;
 	}
 	return true;
@@ -159,17 +153,14 @@ __do_fork (void *aux) {
 	// struct fork_info *info = (struct fork_info *) aux;
 	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
-	struct intr_frame *parent_if = &parent->parent_if;
-	struct intr_frame if_;
+
+	struct intr_frame *parent_if = &parent->backup_if;
 	bool succ = true;
-	
-	memcpy(&if_, parent_if, sizeof(struct intr_frame));
-	if_.R.rax = 0; //자식 반환값 0으로 초기화
 
-	current->parent = parent;
-	list_push_back(&parent->children, &current->my_elem);
+	// 내용을 지역변수에 담기
+	memcpy (&if_, parent_if, sizeof (struct intr_frame));
+	if_.R.rax = 0;
 
-	/* 2. Duplicate PT */
 	// 자식 프로세스의 페이지 테이블에게 복제한 값을 배치해야함
 	current->pml4 = pml4_create();
 	if (current->pml4 == NULL)
@@ -186,45 +177,27 @@ __do_fork (void *aux) {
 #endif
 	process_init ();
 
-	/* 3. fdt 복사 */
+	// fdt 복사
 	for (int i = 0; i < 64; i++)
 	{
-		struct file *file = parent->fd_table[i];
-		if (parent->fd_table[i] == NULL) continue;
-		if (i > 2) file = file_duplicate(file);
-		current->fd_table[i] = file;
+		// 이거 왜 안됨? 예외 처리 다 해줬는데?
+		//if (parent->fd_table[i] == NULL) continue;
+		//current->fd_table[i] = file_duplicate(parent->fd_table[i]);
 	}
 	current->next_fd = parent->next_fd;
 
-	// for (int fd = 0; fd < 64; fd++)
-	// {
-	// 	if (fd <= 1)
-	// 		current->fd_table[fd] = parent->fd_table[fd];
-	// 	else
-	// 	{
-	// 		if (parent->fd_table[fd] != NULL)
-	// 		{
-	// 			if (parent->fd_table[fd] == stdin || parent->fd_table[fd] == stdout)
-	// 				current->fd_table[fd] = parent->fd_table[fd];
-	// 			else
-	// 				current->fd_table[fd] = file_duplicate(parent->fd_table[fd]);
-	// 		}
-	// 	}
-	// }
-	/* TODO: Your code goes here.
-	 * TODO: Hint) To duplicate the file object, use `file_duplicate`
-	 * TODO:       in include/filesys/file.h. Note that parent should not return
-	 * TODO:       from the fork() until this function successfully duplicates
-	 * TODO:       the resources of parent.*/
-	sema_up(&parent->sema_load);
-	
+
+	current->parent = parent;
+	list_push_back(&parent->children, &current->child_elem);
+
+	sema_up(&current->parent->sema_load); 
+	process_init ();
+
 	/* Finally, switch to the newly created process. */
 	if (succ)
 		do_iret (&if_);
 error:
-	succ = false;
-	sema_up(&parent->sema_load);
-	// sys_exit(TID_ERROR);
+	sema_up(&current->parent->sema_load);
 	thread_exit ();
 	// exit(-1);
 }
@@ -316,44 +289,40 @@ process_exec (void *f_name) {
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
 
-int
-process_wait (tid_t child_tid) {	
-	timer_msleep(500);
 
+
+int
+process_wait (tid_t child_tid) {
+	
+
+	//sema_down(&thread_current()->sema_wait);
+	timer_msleep(500);
+	// 여기에서 적절한 대기를 시킬 수 있어야하는데,
 	struct thread *child = get_child_thread(child_tid);
-	if (child == NULL)
+	
+    if (child == NULL)
 	{
 		return -1;
 	}
-	
-	sema_down(&child->sema_wait);
-
-	//list_remove(&child->my_elem);
-	//sema_up(&child->sema_exit);
-
-	return child->exit_status;
+	sema_down (&child->sema_wait);
+	//list_remove(&child->child_elem);
+   sema_up(&child->sema_exit);
+   	return child->exit_status;
 }
-
 /* Exit the process. This function is called by thread_exit (). */
+
 void
 process_exit (void) {
 	struct thread *curr = thread_current ();
-	/* TODO: Your code goes here.
-	 * TODO: Implement process termination message (see
-	 * TODO: project2/process_termination.html).
-	 * TODO: We recommend you to implement process resource cleanup here. */
-	
 	for (int i = 2; i < 64; i++) {
-	//	close(i);
+		//if(curr->fd_table[i] != NULL) close(i);
 	}
-	//*curr->fd_table = NULL;
-	//file_close(curr->running); // todo: check
+
+	//palloc_free_page(curr->fd_table);
+	//file_close(curr->running);
 	process_cleanup ();
 	sema_up(&curr->sema_wait);
-
-	// printf("4\n");
-//	sema_down(&curr->sema_exit);
-	// printf("6\n");
+	sema_down(&curr->sema_exit); 
 }
 
 /* Free the current process's resources. */
@@ -551,14 +520,14 @@ load (const char *file_name, struct intr_frame *if_) {
 		}
 	}
 
+	t->running = file;
+	file_deny_write(file);
+
 	/* Set up stack. */
 	if (!setup_stack (if_))
 		goto done;
 
-	/* Start address. */
 	if_->rip = ehdr.e_entry;
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
 
 	success = true;
 
@@ -712,17 +681,17 @@ install_page (void *upage, void *kpage, bool writable) {
 			&& pml4_set_page (t->pml4, upage, kpage, writable));
 }
 
-struct thread *get_child_thread (tid_t tid)
+struct thread *get_child_thread (tid_t pid) 
 {
-	struct thread *curr = thread_current();
-	struct list *children = &curr->children;
+	struct thread *cur = thread_current();
+	struct list *children = &cur->children;
 	for (struct list_elem *e = list_begin(children); e != list_end(children); e = list_next(e)) {
-		struct thread *child = list_entry(e, struct thread, my_elem);
-		if (child->tid == tid) return child;
+		struct thread *child = list_entry(e, struct thread, child_elem);
+		if (child->tid == pid) return child;
 	}
-
 	return NULL;
 }
+
 
 #else
 /* From here, codes will be used after project 3.
@@ -792,3 +761,4 @@ setup_stack (struct intr_frame *if_) {
 	return success;
 }
 #endif /* VM */
+

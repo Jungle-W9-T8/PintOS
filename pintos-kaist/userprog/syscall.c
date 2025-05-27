@@ -20,32 +20,6 @@
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *f);
 bool is_valid_user_pointer(const void *uaddr);
-void halt (void);
-void exit (int status);
- int write (int fd, const void *buffer, unsigned size);
-
-// pid_t fork (const char *thread_name);
-// int exec (const char *file);
-// int wait (pid_t pid);
-// bool create (const char *file, unsigned initial_size);
-// bool remove (const char *file);
-// int open (const char *file);
-// int filesize (int fd);
-// int read (int fd, void *buffer, unsigned size);
-// void seek (int fd, unsigned position);
-// unsigned tell (int fd);
-// void close (int fd); 
-// int dup2 (int oldfd, int newfd);
-// void *mmap (void *addr, size_t length, int writable, int fd, off_t offset);
-// void munmap (void *addr);
-// bool chdir (const char *dir);
-// bool mkdir (const char *dir);
-// bool readdir (int fd, char name[READDIR_MAX_LEN + 1]);
-// bool isdir (int fd);
-// int inumber (int fd);
-// int symlink (const char* target, const char* linkpath);
-// int mount (const char *path, int chan_no, int dev_no);
-// int umount (const char *path);
 
 /* System call.
  *
@@ -89,7 +63,11 @@ syscall_handler (struct intr_frame *f) {
 	case SYS_FORK:
 		if(f->R.rdi != NULL)
 		{
-			f->R.rax = fork(f->R.rdi, f);
+			if(is_user_vaddr(f->R.rdi))
+			{
+				memcpy(&thread_current()->backup_if, f, sizeof(struct intr_frame));
+				f->R.rax = fork(f->R.rdi);
+			}
 		}
 		else
 			exit(-1);
@@ -213,15 +191,22 @@ void halt(void)
 void exit(int status)
 {
     struct thread *curr = thread_current();
-	curr->exit_status = status;
-    printf("%s: exit(%d)\n", curr->name, status);
+    curr->exit_status = status;
+	printf("%s: exit(%d)\n", curr->name, curr->exit_status);
     thread_exit();
 }
 
-tid_t fork (const char *thread_name, struct intr_frame *if_)
+/*
+1. 유저 영역에 있을 때의 intr_frame을 전달하기 위해 fork 되자마자 inrt_frame 복제 후 저장
+2. 자식 스레드 생성
+3. 자식의 load()가 끝날 때까지 대기
+4. 자식의 스레드 아이디 반환
+*/
+tid_t fork (const char *thread_name)
 {
-	tid_t fork_result =  process_fork(thread_name, if_);
-	return fork_result;
+	tid_t returnTarget = process_fork(thread_name, &thread_current()->backup_if);
+	if(returnTarget == TID_ERROR) exit(-1);
+	return returnTarget;
 }
 
 int exec(const char *cmd_line)
@@ -229,11 +214,13 @@ int exec(const char *cmd_line)
 	check_address(cmd_line);
 
 	if(cmd_line == NULL) exit(-1);
+	if (pml4_get_page(thread_current()->pml4, cmd_line) == NULL) exit(-1);
+	
 
 	char *package_cmd;
 	package_cmd = palloc_get_page(PAL_ZERO);
-
-	strlcpy(package_cmd, cmd_line, strlen(cmd_line) + 1);
+	if (package_cmd == NULL) exit(-1);
+	strlcpy(package_cmd, cmd_line, PGSIZE);
 
 	int result = process_exec(package_cmd);
 	if (result == -1) return result;
@@ -241,7 +228,9 @@ int exec(const char *cmd_line)
 
 
 int wait (tid_t pid) {
-	return process_wait(pid);
+	tid_t exitNum = process_wait(pid);
+	//	if(exitNum == -1) printf("returned -1!\n");
+	return exitNum;
 }
 
 bool create(const char *file, unsigned initial_size)
@@ -315,11 +304,10 @@ int read(int fd, void *buffer, unsigned size)
 // 콘솔 출력을 수행하거나 파일에 직접 작성한다.
 int write(int fd, const void *buffer, unsigned size)
 {
-	check_address(buffer);
+	if ((buffer == NULL) || !(pml4_get_page(thread_current()->pml4, buffer))) exit(-1);
 
 	if(fd == 0) exit(-1);
 	if(fd >= 64) exit(-1);
-	// if(!is_user_vaddr(buffer)) exit(-1); // write-bad-ptr 구현
 
 	if(fd == 1)
 	{
