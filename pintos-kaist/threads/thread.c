@@ -511,7 +511,7 @@ thread_exit (void) {
  	 }
 	 // 부모 자식 관계 끊어주기
 	 curr->parent = NULL;
-	 printf("%s: exit(%d)\n", curr->name, curr->exit_status);
+	 //
 
 
 	/* Just set our status to dying and schedule another process.
