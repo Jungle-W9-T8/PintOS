@@ -97,7 +97,6 @@ process_fork (const char *name, struct intr_frame *if_) {
 	tid_t pid = thread_create(name, PRI_DEFAULT, __do_fork, curr);
 	if (pid == TID_ERROR) return TID_ERROR;
 	sema_down(&curr->sema_load); // waiters-list의 주체는 아무 상관이 없음
-	printf("SEMA FUCK GOGFO!!\n");
 	return pid;
 }
 
@@ -538,63 +537,6 @@ done:
 	/* We arrive here whether the load is successful or not. */
 	file_close (file);
 	return success;
-}
-
-void construct_stack(const char* file_name, struct intr_frame *if__) {
-    int argc = 0;
-    int idx;
-    char **argv;
-	char *file_name_copy = palloc_get_page(0);
-    char *token;
-	char *tokens[100];
-	char *tokens_addr[32];
-	char *save_ptr;
-    int cur_arg_len;
-	int total_arg_len;
-
-    // 인자 개수 계산 및 인자별 시작 주소, 인자 문자열 저장
-    strlcpy(file_name_copy, file_name, strlen(file_name) + 1);
-
-    token = strtok_r(file_name_copy, " ", &save_ptr);
-	
-	// 인자들을 배열에 저장
-	while (token != NULL) {
-		tokens[argc++] = token;
-		//token = strtok_r(file_name_copy, " ", &save_ptr); 
-		token = strtok_r(NULL, " ", &save_ptr); 
-	}
-
-	if__->rsp -= 8;
-
-	// 인자들을 역순으로 스택에 저장
-	for (int i=argc-1; i>=0 ;i--) {
-		size_t arg_len = (strlen(tokens[i]) + 1);
-		if__->rsp -= arg_len;
-		memcpy((void*)if__->rsp, tokens[i], arg_len);
-
-		tokens_addr[i] = (char*)if__->rsp; // argv 포인터들을 배열에 저장
-	}
-
-	//
-	if__->rsp = ((uintptr_t)(if__->rsp) & ~0x0F); 
-
-    // NULL 포인터 sentinel
-    if__->rsp -= sizeof(char *);
-    *(char **)if__->rsp = NULL;
-
-    // argv 포인터들을 스택에 저장
-    for (idx = argc - 1; idx >= 0; idx--) {
-        if__->rsp -= sizeof(char *);
-        *(char **)if__->rsp = tokens_addr[idx];
-    }
-
-	if__->R.rdi = argc;
-	if__->R.rsi = if__->rsp;
-	
-    // fake return address (0)
-    if__->rsp -= sizeof(void *);
-    *(void **)if__->rsp = 0;
-    //free(argv);
 }
 
 /* Checks whether PHDR describes a valid, loadable segment in

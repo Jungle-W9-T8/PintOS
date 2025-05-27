@@ -63,8 +63,12 @@ syscall_handler (struct intr_frame *f) {
 	case SYS_FORK:
 		if(f->R.rdi != NULL)
 		{
-			memcpy(&thread_current()->backup_if, f, sizeof(struct intr_frame));
-			f->R.rax = fork(f->R.rdi);
+			if(is_user_vaddr(f->R.rdi))
+			{
+				memcpy(&thread_current()->backup_if, f, sizeof(struct intr_frame));
+				f->R.rax = fork(f->R.rdi);
+			}
+
 		}
 		else
 			exit(-1);
@@ -191,6 +195,8 @@ tid_t fork (const char *thread_name)
 int exec(const char *cmd_line)
 { 
 	if(cmd_line == NULL) exit(-1);
+	if (pml4_get_page(thread_current()->pml4, cmd_line) == NULL) exit(-1);
+	
 
 	char *package_cmd;
 	package_cmd = palloc_get_page(PAL_ZERO);
