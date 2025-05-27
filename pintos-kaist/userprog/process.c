@@ -80,7 +80,6 @@ initd (void *f_name) {
 
 	thread_current()->parent = package->parent;
 	list_push_back(&package->parent->children, &thread_current()->child_elem);
-
 	process_init ();
 	if (process_exec (package->fn_copy) < 0)
 		PANIC("Fail to launch initd\n");
@@ -290,18 +289,21 @@ process_exec (void *f_name) {
 
 int
 process_wait (tid_t child_tid) {
+	
 
-	sema_down(&thread_current()->sema_wait);
+	//sema_down(&thread_current()->sema_wait);
+	timer_msleep(500);
+	// 여기에서 적절한 대기를 시킬 수 있어야하는데,
 	struct thread *child = get_child_thread(child_tid);
+	
     if (child == NULL)
 	{
 		return -1;
 	}
-	//sema_down (&child->sema_wait);
+	sema_down (&child->sema_wait);
 	//list_remove(&child->child_elem);
-   //	sema_up (&child->sema_exit);
    sema_up(&child->sema_exit);
-    return child->exit_status;
+   	return child->exit_status;
 }
 /* Exit the process. This function is called by thread_exit (). */
 
@@ -311,13 +313,11 @@ process_exit (void) {
 	for (int i = 2; i < 64; i++) {
 		//if(curr->fd_table[i] != NULL) close(i);
 	}
+
 	//palloc_free_page(curr->fd_table);
 	//file_close(curr->running);
 	process_cleanup ();
-	// 얘 여기 있으면 alarm들이 뻗는뎅
-	sema_up(&curr->parent->sema_wait);
-
-	//sema_up(&curr->sema_wait);
+	sema_up(&curr->sema_wait);
 	sema_down(&curr->sema_exit); 
 }
 
@@ -523,10 +523,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	if (!setup_stack (if_))
 		goto done;
 
-	/* Start address. */
 	if_->rip = ehdr.e_entry;
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
 
 	success = true;
 

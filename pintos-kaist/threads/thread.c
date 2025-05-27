@@ -511,6 +511,8 @@ thread_exit (void) {
  	 }
 	 // 부모 자식 관계 끊어주기
 	 curr->parent = NULL;
+	 printf("%s: exit(%d)\n", curr->name, curr->exit_status);
+
 
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
@@ -726,8 +728,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->base_priority = priority;
 	list_init(&t->donations);
 
-	/* File Desciptor Table 초기화 */
-	// *t->fd_table = NULL;
+	/* File Desciptor Table 초기화 */ // 이런 초기화는 영..
 	memset (t->fd_table, 0, sizeof t->fd_table);
 	t->next_fd = 3;
 

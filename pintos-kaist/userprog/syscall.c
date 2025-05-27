@@ -167,7 +167,6 @@ void exit(int status)
 {
     struct thread *curr = thread_current();
     curr->exit_status = status;
-    printf("%s: exit(%d)\n", curr->name, status);
     thread_exit();
 }
 
@@ -203,7 +202,7 @@ int exec(const char *cmd_line)
 
 int wait (tid_t pid) {
 	tid_t exitNum = process_wait(pid);
-	if(exitNum == -1) printf("returned -1!\n");
+	//	if(exitNum == -1) printf("returned -1!\n");
 	return exitNum;
 }
 
