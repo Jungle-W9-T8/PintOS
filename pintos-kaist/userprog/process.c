@@ -175,11 +175,10 @@ __do_fork (void *aux) {
 #endif
 
 	// fdt 복사
-	for (int i = 0; i < 64; i++)
+	for (int i = 3; i < 64; i++)
 	{
-		// 이거 왜 안됨? 예외 처리 다 해줬는데?
-		//if (parent->fd_table[i] == NULL) continue;
-		//current->fd_table[i] = file_duplicate(parent->fd_table[i]);
+		if (parent->fd_table[i] == NULL) continue;
+		current->fd_table[i] = file_duplicate(parent->fd_table[i]);
 	}
 	current->next_fd = parent->next_fd;
 
@@ -311,11 +310,11 @@ void
 process_exit (void) {
 	struct thread *curr = thread_current ();
 	for (int i = 2; i < 64; i++) {
-		//if(curr->fd_table[i] != NULL) close(i);
+		if(curr->fd_table[i] != NULL) 
+			close(i);
 	}
 
-	//palloc_free_page(curr->fd_table);
-	//file_close(curr->running);
+	file_close(curr->running);
 	process_cleanup ();
 	sema_up(&curr->sema_wait);
 	sema_down(&curr->sema_exit); 
@@ -529,7 +528,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
+	// file_close (file);
 	return success;
 }
 

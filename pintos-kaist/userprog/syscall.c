@@ -46,7 +46,7 @@ syscall_init (void) {
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
 		
-	// lock_init (&filesys_lock);
+	lock_init(&filesys_lock);
 }
 
 /* The main system call interface */
@@ -209,31 +209,63 @@ int wait (tid_t pid) {
 
 bool create(const char *file, unsigned initial_size)
 {
-	if (pml4_get_page(thread_current()->pml4, file) == NULL) exit(-1);
-	if(strlen(file) == 0) exit(-1);
-	if(strlen(file) > 128) return false; // create-long 테스트 케이스 대비
+	lock_acquire(&filesys_lock);
+	if (pml4_get_page(thread_current()->pml4, file) == NULL) {
+		lock_release(&filesys_lock);
+		exit(-1);
+	} 
+	if(strlen(file) == 0) {
+		lock_release(&filesys_lock);
+		exit(-1);
+	}
+	if(strlen(file) > 128) {
+		lock_release(&filesys_lock);
+		return false; // create-long 테스트 케이스 대비
+	}
+	lock_release(&filesys_lock);
 	return filesys_create(file, initial_size);
 }
 
 bool remove(const char *file)
 {
-	if (pml4_get_page(thread_current()->pml4, file) == NULL) exit(-1);
-	if(strlen(file) == 0) exit(-1);
-	if(strlen(file) > 128) return false;
+	lock_acquire(&filesys_lock);
+	if (pml4_get_page(thread_current()->pml4, file) == NULL) {
+		lock_release(&filesys_lock);
+		exit(-1);
+	}
+	if(strlen(file) == 0) {
+		lock_release(&filesys_lock);
+		exit(-1);
+	}
+	if(strlen(file) > 128) {
+		lock_release(&filesys_lock);
+		return false;
+	}
+	lock_release(&filesys_lock);
 	return filesys_remove(file);
 }
 
 int open(const char *file)
 {
-	if (pml4_get_page(thread_current()->pml4, file) == NULL) exit(-1);
+	lock_acquire(&filesys_lock);
+
+	if (pml4_get_page(thread_current()->pml4, file) == NULL) {
+		lock_release(&filesys_lock);
+		exit(-1);
+	}
 	
 	struct thread *curr = thread_current();
 	struct file *targetFile = filesys_open(file);
-	if(targetFile == NULL) return -1;
+
+	if(targetFile == NULL) {
+		lock_release(&filesys_lock);
+		return -1;
+	}
 
 	int i = curr->next_fd;
 	curr->fd_table[i] = targetFile;
 	curr->next_fd += 1;
+	lock_release(&filesys_lock);
 
 	// 생각해보니.. fd를 64개 다쓰면? 그리고, 재활용가능한 fd가 있다면?
 	// 연결된 번호를 반환하도록 하기
@@ -244,10 +276,19 @@ int open(const char *file)
 // 파일 크기를 확인한다.
 int filesize(int fd)
 {
+	lock_acquire(&filesys_lock);
 	struct file *targetView = thread_current()->fd_table[fd];
-	if(targetView == NULL) exit(-1);
+	if(targetView == NULL) {
+		lock_release(&filesys_lock);
+		exit(-1);
+	}
+
 	off_t fileSize = file_length(targetView);
-	if(fileSize == 0) return -1;
+	if(fileSize == 0) {
+		lock_release(&filesys_lock);
+		return -1;
+	}
+	lock_release(&filesys_lock);
 	return fileSize;
 }
 
@@ -255,73 +296,103 @@ int filesize(int fd)
 // 키보드 입력을 받거나 파일에서 내용을 가져온다.
 int read(int fd, void *buffer, unsigned size)
 {
-	if ((buffer == NULL) || !(pml4_get_page(thread_current()->pml4, buffer))) exit(-1);
+	if ((buffer == NULL) || !(pml4_get_page(thread_current()->pml4, buffer))) {
+		exit(-1);
+	}
 
-	if(!is_user_vaddr(buffer)) exit(-1); // write-bad-ptr 구현
+	if(!is_user_vaddr(buffer)) {
+		exit(-1); // write-bad-ptr 구현
+	}
 
-	if(fd == 0)
-	{
+	if(fd >= 64 || fd == 1 || fd == 2) exit(-1);
+
+	if(fd == 0) {
 		uint8_t inputData = input_getc();
 		return inputData;
 	}
-	else
-	{
-		if(fd >= 64 || fd == 1 || fd == 2) exit(-1);
-		off_t inputData = file_read(thread_current()->fd_table[fd], buffer, size);
-		return inputData;
-	}
 
-	// Read size bytes from the file open as fd into buffer.
-	// Return the number of bytes actually read (0 at end of file), or -1 if fails.
+	lock_acquire(&filesys_lock);
+
+	off_t inputData = file_read(thread_current()->fd_table[fd], buffer, size);
+	lock_release(&filesys_lock);
+	return inputData;
 }
 
 // 콘솔 출력을 수행하거나 파일에 직접 작성한다.
 int write(int fd, const void *buffer, unsigned size)
 {
-	if ((buffer == NULL) || !(pml4_get_page(thread_current()->pml4, buffer))) exit(-1);
-
-	if(fd == 0) exit(-1);
-	if(fd >= 64) exit(-1);
-
-	if(fd == 1)
-	{
+	if(fd == 1) {
 		putbuf(buffer, size);
+		return size;
 	}
-	else
-	{
-		// fd는 open 후 값을 그대로 끌어온다고 가정. 즉, fd는 바로 해당 파일을 가리킨다.
-		struct file *targetWrite = thread_current()->fd_table[fd];
-		if(targetWrite == NULL) exit(-1);
-		int writed = file_write(targetWrite, buffer, size);
+
+	lock_acquire(&filesys_lock);
+
+	if(fd >= 64 || fd < 0) {
+		lock_release(&filesys_lock);
+		exit(-1);
 	}
+		
+	if ((buffer == NULL) || !(pml4_get_page(thread_current()->pml4, buffer))) {
+		lock_release(&filesys_lock);
+		exit(-1);
+	}
+	
+
+	// fd는 open 후 값을 그대로 끌어온다고 가정. 즉, fd는 바로 해당 파일을 가리킨다.
+	struct file *targetWrite = thread_current()->fd_table[fd];
+	if (targetWrite == NULL) {
+		lock_release(&filesys_lock);
+		exit(-1);
+	}
+
+	int writed = file_write(targetWrite, buffer, size);
 	// TODO : return 값을 -1로 정의 할 여지를 고민해야함
-	return size;
+	lock_release(&filesys_lock);
+	return writed;
 }
 
 // Changes the next byte to be rtead or written in open file fd to position.
 void seek(int fd, unsigned position)
 {
+	lock_acquire(&filesys_lock);
 	struct file *targetSeek = thread_current()->fd_table[fd];
-	if(targetSeek == NULL) exit(-1);
-
+	if(targetSeek == NULL) {
+		lock_release(&filesys_lock);
+		exit(-1);
+	}
 	file_seek(targetSeek, position);
+	lock_release(&filesys_lock);
 }
 
 // Return the position of the next byte to be read or written in open file fd.
 unsigned tell(int fd)
 {
+	lock_acquire(&filesys_lock);
 	struct file *targetTell = thread_current()->fd_table[fd];
-	if(targetTell == NULL) exit(-1);
+	if(targetTell == NULL) {
+		lock_release(&filesys_lock);
+		exit(-1);
+	}
 	off_t value = file_tell(targetTell);
+	lock_release(&filesys_lock);
 	return value;
 }
 
 // 해당하는 파일 디스크립터를 닫습니다.
 void close(int fd)
 {
-	if(fd > 64) exit(-1);
+	lock_acquire(&filesys_lock);
+	if(fd > 64) {
+		lock_release(&filesys_lock);
+		exit(-1);
+	}
 	struct file *closeTarget = thread_current()->fd_table[fd];
-	if (!is_user_vaddr(closeTarget)) return;
+	if (!is_user_vaddr(closeTarget)) {
+		lock_release(&filesys_lock);
+		return;
+	}
+	lock_release(&filesys_lock);
 	file_close(closeTarget);
 }
 
