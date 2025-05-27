@@ -228,12 +228,7 @@ thread_create (const char *name, int priority,
 	t->fd_table[2] = stderr;
 	t->next_fd = 3;
 
-	list_push_back(&curr->children, &t->my_elem);
-	printf("%p", &curr->children);
-	printf("%p", &t->my_elem);
 	// userprog 확장을 위한 추가된 쓰레드 멤버변수 초기화 과정
-	t->parentThread = NULL;
-	list_init(&t->siblingThread);
 
 	// 스레드를 READY 상태로 전환하고 ready_list에 삽입하기
 	thread_unblock (t);
@@ -500,35 +495,31 @@ thread_exit (void) {
 	ASSERT (!intr_context ());
 
 #ifdef USERPROG
-	processOff();
 	process_exit ();
 #endif
+	struct thread *curr = thread_current();
+	struct list_elem *e;
+ 	for (e = list_begin (&curr->children); e != list_end (&curr->children); e = list_next (e)) {
+ 		struct thread *result = list_entry (e, struct thread, my_elem);
+ 		if (result->tid == curr->tid)
+		{
+			list_remove(&result->my_elem);
+			break;
+		}
+ 	}
 
+	// // curr->fd_table
+	// for (int fd = 3; fd <= 64; fd++) {
+	// 	if (curr->fd_table[fd] != NULL) {
+	// 		file_close(curr->fd_table[fd]);
+	// 		curr->fd_table[fd] = NULL;
+	// 	}
+	// }
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
-	struct thread *curr = thread_current();
-	struct list_elem *e;
- 	for (e = list_begin (&curr->parent->children); e != list_end (&curr->parent->children); e = list_next (e)) {
- 		struct thread *result = list_entry (e, struct thread, elem);
- 		if (result->tid = curr->tid)
-		{
-			list_remove(&result->elem);
-			break;
-		}
- 	}
-	// 부모 자식 관계 끊어주기
-	curr->parent = NULL;
-
-	// curr->fd_table
-	for (int fd = 3; fd <= 64; fd++) {
-		if (curr->fd_table[fd] != NULL) {
-			file_close(curr->fd_table[fd]);
-			curr->fd_table[fd] = NULL;
-		}
-	}
 }
 
 /*************************************************************
@@ -737,19 +728,13 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->base_priority = priority;
 	list_init(&t->donations);
 
-	t->threadSema.value = 1;
-	list_init(&t->threadSema.waiters);
-
-	t->threadSema.value = 1;
-	list_init(&t->threadSema.waiters);
-
 	/* File Desciptor Table 초기화 */
 	// *t->fd_table = NULL;
 	memset (t->fd_table, 0, sizeof t->fd_table);
 	t->next_fd = 3;
 
 	/* Relations */
-	// t->parent = NULL;
+	t->parent = NULL;
 	list_init(&t->children);
 
 	/* Semaphore */

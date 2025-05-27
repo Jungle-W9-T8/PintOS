@@ -89,8 +89,7 @@ syscall_handler (struct intr_frame *f) {
 	case SYS_FORK:
 		if(f->R.rdi != NULL)
 		{
-			memcpy(&thread_current()->parent_if, f, sizeof(struct intr_frame)); 
-			f->R.rax = fork(f->R.rdi);
+			f->R.rax = fork(f->R.rdi, f);
 		}
 		else
 			exit(-1);
@@ -181,6 +180,31 @@ syscall_handler (struct intr_frame *f) {
 	}
 }
 
+void check_address(const uint64_t *addr)
+{
+	struct thread *cur = thread_current();
+
+	if (addr == "" || !(is_user_vaddr(addr)) || pml4_get_page(cur->pml4, addr) == NULL)
+	{
+		exit(-1);
+	}
+}
+
+void check_buffer(const void *buffer, unsigned size)
+{
+	uint8_t *start = (uint8_t *)pg_round_down(buffer);
+	uint8_t *end = (uint8_t *)pg_round_down(buffer + size - 1);
+	struct thread *cur = thread_current();
+
+	for (uint8_t *addr = start; addr <= end; addr += PGSIZE)
+	{
+		if (!is_user_vaddr(addr) || pml4_get_page(cur->pml4, addr) == NULL)
+		{
+			exit(-1);
+		}
+	}
+}
+
 void halt(void)
 {
 	power_off();
@@ -194,17 +218,16 @@ void exit(int status)
     thread_exit();
 }
 
-tid_t fork (const char *thread_name)
+tid_t fork (const char *thread_name, struct intr_frame *if_)
 {
-	struct thread *curr = thread_current();
-	struct intr_frame if_;
-	memcpy(&if_, &curr->parent_if, sizeof(struct intr_frame));
-	return process_fork(thread_name, &if_);
+	tid_t fork_result =  process_fork(thread_name, if_);
+	return fork_result;
 }
-
 
 int exec(const char *cmd_line)
 { 
+	check_address(cmd_line);
+
 	if(cmd_line == NULL) exit(-1);
 
 	char *package_cmd;
@@ -223,7 +246,8 @@ int wait (tid_t pid) {
 
 bool create(const char *file, unsigned initial_size)
 {
-	if (pml4_get_page(thread_current()->pml4, file) == NULL) exit(-1);
+	check_address(file);
+
 	if(strlen(file) == 0) exit(-1);
 	if(strlen(file) > 128) return false; // create-long 테스트 케이스 대비
 	return filesys_create(file, initial_size);
@@ -231,7 +255,8 @@ bool create(const char *file, unsigned initial_size)
 
 bool remove(const char *file)
 {
-	if (pml4_get_page(thread_current()->pml4, file) == NULL) exit(-1);
+	check_address(file);
+
 	if(strlen(file) == 0) exit(-1);
 	if(strlen(file) > 128) return false;
 	return filesys_remove(file);
@@ -239,7 +264,7 @@ bool remove(const char *file)
 
 int open(const char *file)
 {
-	if (pml4_get_page(thread_current()->pml4, file) == NULL) exit(-1);
+	check_address(file);
 	
 	struct thread *curr = thread_current();
 	struct file *targetFile = filesys_open(file);
@@ -269,9 +294,7 @@ int filesize(int fd)
 // 키보드 입력을 받거나 파일에서 내용을 가져온다.
 int read(int fd, void *buffer, unsigned size)
 {
-	if ((buffer == NULL) || !(pml4_get_page(thread_current()->pml4, buffer))) exit(-1);
-
-	// if(!is_user_vaddr(buffer)) exit(-1); // write-bad-ptr 구현
+	check_address(buffer);
 
 	if(fd == 0)
 	{
@@ -292,7 +315,7 @@ int read(int fd, void *buffer, unsigned size)
 // 콘솔 출력을 수행하거나 파일에 직접 작성한다.
 int write(int fd, const void *buffer, unsigned size)
 {
-	if ((buffer == NULL) || !(pml4_get_page(thread_current()->pml4, buffer))) exit(-1);
+	check_address(buffer);
 
 	if(fd == 0) exit(-1);
 	if(fd >= 64) exit(-1);

@@ -18,6 +18,8 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+
+#include "devices/timer.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -29,7 +31,6 @@ static void __do_fork (void *);
 
 void stack_update(int argc, char* argv[], void **stackptr)
 {
-
 }
 
 
@@ -51,19 +52,21 @@ process_create_initd (const char *file_name) {
 	char *threadName = palloc_get_page(PAL_ZERO);
 	tid_t tid;
 	fn_copy = palloc_get_page (0);
-
-	if (fn_copy == NULL)
+	struct initd_args *args = palloc_get_page(PAL_ZERO);
+	if ((fn_copy == NULL) || (args == NULL))
 		return TID_ERROR;
 
 	strlcpy (fn_copy, file_name, PGSIZE);
 	strlcpy (threadName, file_name, PGSIZE); 
 
+	args->file_name = fn_copy;
+	args->parent = thread_current();
+
 	ptr = strtok_r(threadName, " \t\r\n", &nextptr);
-	tid = thread_create (ptr, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (ptr, PRI_DEFAULT, initd, args);
 	
 	if (tid == TID_ERROR)
 	{
-		palloc_free_page(fn_copy);
 		palloc_free_page(threadName);
 	}
 	return tid;
@@ -71,15 +74,26 @@ process_create_initd (const char *file_name) {
 
 /* A thread function that launches first user process. */
 static void
-initd (void *f_name) {
+initd (void *args) {
 #ifdef VM
 	supplemental_page_table_init (&thread_current ()->spt);
 #endif
 
 	process_init ();
+
+	struct initd_args *karg = (struct initd_args *) args;
+	struct thread *parent = karg->parent;
+	struct thread *curr = thread_current();
+	
+	curr->parent = parent;
+	list_push_back(&parent->children, &curr->my_elem);
+
 	// 기존에 매개변수로 넘겼던 f_name 대신 karg의 주소를 넘겨서 _exec에서 작성하도록 하기
-	if (process_exec (f_name) < 0)
+	if (process_exec (karg->file_name) < 0) {
+		palloc_free_page(karg);
+		palloc_free_page(karg->file_name);
 		PANIC("Fail to launch initd\n");
+	}
 	NOT_REACHED ();
 }
 
@@ -87,25 +101,11 @@ initd (void *f_name) {
  * TID_ERROR if the thread cannot be created. */
 tid_t
 process_fork (const char *name, struct intr_frame *if_) {
-	/* Clone current thread to new thread.*/
-	struct thread *curr = thread_current();
-	memcpy(&curr->parent_if, if_, sizeof(struct intr_frame));
-	
-	struct fork_info *info = palloc_get_page(PAL_ZERO);
-	if (info == NULL) return TID_ERROR;
-	info->parent = curr;
-
-	tid_t tid = thread_create (name, PRI_DEFAULT, __do_fork, info);
-	if (tid == TID_ERROR) {
-		palloc_free_page(info);
-		return TID_ERROR;
-	}
-
-	sema_down(&curr->sema_load);
-
-	struct thread *child = get_child_thread(tid);
-	if (child->exit_status == TID_ERROR) return TID_ERROR;
-
+	struct thread *parent = thread_current();
+	memcpy(&parent->parent_if, if_, sizeof(struct intr_frame));
+	tid_t tid = thread_create (name, PRI_DEFAULT, __do_fork, parent);
+	if (tid == TID_ERROR) return TID_ERROR;
+	sema_down(&parent->sema_load);
 	return tid;
 }
 
@@ -156,14 +156,18 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
  *       this function. */
 static void
 __do_fork (void *aux) {
-	struct fork_info *info = (struct fork_info *) aux;
-	struct thread *parent = info->parent;
+	// struct fork_info *info = (struct fork_info *) aux;
+	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
+	struct intr_frame *parent_if = &parent->parent_if;
 	struct intr_frame if_;
 	bool succ = true;
 	
-	memcpy(&if_, &parent->parent_if, sizeof(struct intr_frame));
+	memcpy(&if_, parent_if, sizeof(struct intr_frame));
 	if_.R.rax = 0; //자식 반환값 0으로 초기화
+
+	current->parent = parent;
+	list_push_back(&parent->children, &current->my_elem);
 
 	/* 2. Duplicate PT */
 	// 자식 프로세스의 페이지 테이블에게 복제한 값을 배치해야함
@@ -212,11 +216,8 @@ __do_fork (void *aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
-	
 	sema_up(&parent->sema_load);
-
-	palloc_free_page(info);
-
+	
 	/* Finally, switch to the newly created process. */
 	if (succ)
 		do_iret (&if_);
@@ -315,38 +316,22 @@ process_exec (void *f_name) {
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
 
-int isWaitOn = 1; // 전역변수로써 선언
-
-void processOff()
-{
-	isWaitOn = 0;
-}
-
 int
-process_wait (tid_t child_tid) {
-	// 힌트 번역
-	// process wait 제대로 구현하기 전까지, 차라리 무한루프를 만드세요.
-	// process wait 구현은 system call 강의 14분대에서 확인하세요.
-
-	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
-	 * XXX:       to add infinite loop here before
-	 * XXX:       implementing the process_wait. */
+process_wait (tid_t child_tid) {	
+	timer_msleep(500);
 
 	struct thread *child = get_child_thread(child_tid);
-	// if (child == NULL) {
-	// 	while(isWaitOn)
-	// 	{
-			
-	// 	}
-	// 	return -1;
-	// }
-
+	if (child == NULL)
+	{
+		return -1;
+	}
+	
 	sema_down(&child->sema_wait);
-	int exit_status = child->exit_status;
-	list_remove(&child->my_elem); // todo: check
-	sema_up(&child->sema_exit);
 
-	return exit_status;
+	//list_remove(&child->my_elem);
+	//sema_up(&child->sema_exit);
+
+	return child->exit_status;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -359,18 +344,16 @@ process_exit (void) {
 	 * TODO: We recommend you to implement process resource cleanup here. */
 	
 	for (int i = 2; i < 64; i++) {
-		close(i);
+	//	close(i);
 	}
-	*curr->fd_table = NULL;
-	file_close(curr->running); // todo: check
-
+	//*curr->fd_table = NULL;
+	//file_close(curr->running); // todo: check
 	process_cleanup ();
+	sema_up(&curr->sema_wait);
 
-	if (curr->parent != NULL)
-    {
-        sema_up(&curr->sema_wait);
-        sema_down(&curr->sema_exit);
-    }
+	// printf("4\n");
+//	sema_down(&curr->sema_exit);
+	// printf("6\n");
 }
 
 /* Free the current process's resources. */
@@ -581,65 +564,8 @@ load (const char *file_name, struct intr_frame *if_) {
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
+	// file_close (file);
 	return success;
-}
-
-void construct_stack(const char* file_name, struct intr_frame *if__) {
-    int argc = 0;
-    int idx;
-    char **argv;
-	char *file_name_copy = palloc_get_page(0);
-    char *token;
-	char *tokens[100];
-	char *tokens_addr[32];
-	char *save_ptr;
-    int cur_arg_len;
-	int total_arg_len;
-
-    // 인자 개수 계산 및 인자별 시작 주소, 인자 문자열 저장
-    strlcpy(file_name_copy, file_name, strlen(file_name) + 1);
-
-    token = strtok_r(file_name_copy, " ", &save_ptr);
-	
-	// 인자들을 배열에 저장
-	while (token != NULL) {
-		tokens[argc++] = token;
-		//token = strtok_r(file_name_copy, " ", &save_ptr); 
-		token = strtok_r(NULL, " ", &save_ptr); 
-	}
-
-	if__->rsp -= 8;
-
-	// 인자들을 역순으로 스택에 저장
-	for (int i=argc-1; i>=0 ;i--) {
-		size_t arg_len = (strlen(tokens[i]) + 1);
-		if__->rsp -= arg_len;
-		memcpy((void*)if__->rsp, tokens[i], arg_len);
-
-		tokens_addr[i] = (char*)if__->rsp; // argv 포인터들을 배열에 저장
-	}
-
-	//
-	if__->rsp = ((uintptr_t)(if__->rsp) & ~0x0F); 
-
-    // NULL 포인터 sentinel
-    if__->rsp -= sizeof(char *);
-    *(char **)if__->rsp = NULL;
-
-    // argv 포인터들을 스택에 저장
-    for (idx = argc - 1; idx >= 0; idx--) {
-        if__->rsp -= sizeof(char *);
-        *(char **)if__->rsp = tokens_addr[idx];
-    }
-
-	if__->R.rdi = argc;
-	if__->R.rsi = if__->rsp;
-	
-    // fake return address (0)
-    if__->rsp -= sizeof(void *);
-    *(void **)if__->rsp = 0;
-    //free(argv);
 }
 
 /* Checks whether PHDR describes a valid, loadable segment in
@@ -786,7 +712,7 @@ install_page (void *upage, void *kpage, bool writable) {
 			&& pml4_set_page (t->pml4, upage, kpage, writable));
 }
 
-struct thread *get_child_thread (int tid)
+struct thread *get_child_thread (tid_t tid)
 {
 	struct thread *curr = thread_current();
 	struct list *children = &curr->children;

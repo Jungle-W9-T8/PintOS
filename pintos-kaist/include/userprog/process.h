@@ -9,6 +9,11 @@ struct kernel_args{
 	char raw[128];
 };
 
+struct initd_args {
+	char *file_name;
+	struct thread *parent;
+};
+
 void stack_update(int argc, char* argv[], void **stackptr);
 
 tid_t process_create_initd (const char *file_name);

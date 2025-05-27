@@ -110,8 +110,6 @@ struct thread {
 	struct list siblingThread;
 	struct list_elem childThread;
 	int next_fd;
-	
-	struct semaphore threadSema;
 
 	/* relations */
 	struct thread *parent;
@@ -119,9 +117,9 @@ struct thread {
 	struct list_elem my_elem;
 
 	/* semaphore */
-	struct semaphore *sema_wait;
-	struct semaphore *sema_exit;
-	struct semaphore *sema_load;
+	struct semaphore sema_wait;
+	struct semaphore sema_exit;
+	struct semaphore sema_load;
 
 	/* Page map level 4 */
 	uint64_t *pml4;            
