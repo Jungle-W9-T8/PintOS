@@ -30,6 +30,8 @@
         "array": "c",
         "initializer_list": "c",
         "utility": "c",
-        "mmu.h": "c"
+        "mmu.h": "c",
+        "syn-read.h": "c",
+        "typeinfo": "c"
     }
 }
