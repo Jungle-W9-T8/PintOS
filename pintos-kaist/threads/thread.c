@@ -281,7 +281,6 @@ thread_sleep (int64_t wakeup_tick)
     // 	list_remove(&cur->elem); // 포함되었다면 제거
 }
 
-
 static bool 
 cmp_wakeup_tick(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
     struct thread *ta = list_entry(a, struct thread, elem);
@@ -511,7 +510,7 @@ thread_exit (void) {
  	 }
 	 // 부모 자식 관계 끊어주기
 	 curr->parent = NULL;
-	 printf("%s: exit(%d)\n", curr->name, curr->exit_status);
+	 //
 
 
 	/* Just set our status to dying and schedule another process.

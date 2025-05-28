@@ -174,16 +174,12 @@ __do_fork (void *aux) {
 		goto error;
 #endif
 
-	// fdt 복사
-	for (int i = 0; i < 64; i++)
+	for (int i = 3; i < 64; i++)
 	{
-		// 이거 왜 안됨? 예외 처리 다 해줬는데?
-		//if (parent->fd_table[i] == NULL) continue;
-		//current->fd_table[i] = file_duplicate(parent->fd_table[i]);
+		if (parent->fd_table[i] == NULL) continue;
+		current->fd_table[i] = file_duplicate(parent->fd_table[i]);
 	}
 	current->next_fd = parent->next_fd;
-
-
 	current->parent = parent;
 	list_push_back(&parent->children, &current->child_elem);
 
@@ -290,8 +286,7 @@ process_exec (void *f_name) {
 int
 process_wait (tid_t child_tid) {
 	
-
-	//sema_down(&thread_current()->sema_wait);
+	// 세마포어 대신 임시방편 고의 지연
 	timer_msleep(500);
 	// 여기에서 적절한 대기를 시킬 수 있어야하는데,
 	struct thread *child = get_child_thread(child_tid);
@@ -315,7 +310,7 @@ process_exit (void) {
 	}
 
 	//palloc_free_page(curr->fd_table);
-	//file_close(curr->running);
+	file_close(curr->running);
 	process_cleanup ();
 	sema_up(&curr->sema_wait);
 	sema_down(&curr->sema_exit); 
@@ -529,7 +524,6 @@ load (const char *file_name, struct intr_frame *if_) {
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
 	return success;
 }
 
