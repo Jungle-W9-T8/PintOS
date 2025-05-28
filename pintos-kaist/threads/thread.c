@@ -228,6 +228,7 @@ thread_create (const char *name, int priority,
 
 	t->parent = NULL;
 	list_init(&t->siblingThread);
+	list_push_back(&thread_current()->children, &t->child_elem);
 
 	// 스레드를 READY 상태로 전환하고 ready_list에 삽입하기
 	thread_unblock (t);
@@ -236,7 +237,6 @@ thread_create (const char *name, int priority,
 	if(t->priority > thread_current()->priority)
 		thread_yield();
 
-	//list_push_back(&thread_current()->children, &t->child_elem);
 
 	return tid;								// 생성된 스레드의 ID 반환
 }

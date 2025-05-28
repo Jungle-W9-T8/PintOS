@@ -171,12 +171,6 @@ void exit(int status)
     thread_exit();
 }
 
-/*
-1. 유저 영역에 있을 때의 intr_frame을 전달하기 위해 fork 되자마자 inrt_frame 복제 후 저장
-2. 자식 스레드 생성
-3. 자식의 load()가 끝날 때까지 대기
-4. 자식의 스레드 아이디 반환
-*/
 tid_t fork (const char *thread_name)
 {
 	tid_t returnTarget = process_fork(thread_name, &thread_current()->backup_if);
@@ -203,7 +197,6 @@ int exec(const char *cmd_line)
 
 int wait (tid_t pid) {
 	tid_t exitNum = process_wait(pid);
-	//	if(exitNum == -1) printf("returned -1!\n");
 	return exitNum;
 }
 
@@ -228,13 +221,6 @@ bool remove(const char *file)
 	lock_release(&filesys_lock);
 	return isRemoved;
 }
-bool starts_with(const char *str, const char *prefix) {
-    while (*prefix) {
-        if (*prefix != *str) return false;
-        prefix++; str++;
-    }
-    return true;
-}
 
 int open(const char *file)
 {
@@ -250,16 +236,10 @@ int open(const char *file)
 	int i = curr->next_fd;
 	curr->fd_table[i] = targetFile;
 	curr->next_fd += 1;
-
-
-
-	// 생각해보니.. fd를 64개 다쓰면? 그리고, 재활용가능한 fd가 있다면?
-	// 연결된 번호를 반환하도록 하기
 	return i;
 }
 
 
-// 파일 크기를 확인한다.
 int filesize(int fd)
 {
 	struct file *targetView = thread_current()->fd_table[fd];
@@ -309,20 +289,16 @@ int write(int fd, const void *buffer, unsigned size)
 	{
 		putbuf(buffer, size);
 		return size;
-
 	}
 	else
 	{
-		// fd는 open 후 값을 그대로 끌어온다고 가정. 즉, fd는 바로 해당 파일을 가리킨다.
 		struct file *targetWrite = thread_current()->fd_table[fd];
 		if(targetWrite == NULL) exit(-1);
 		lock_acquire(&filesys_lock);
 		int writed = file_write(targetWrite, buffer, size);
 		lock_release(&filesys_lock);
-
 		return writed;
 	}
-	// TODO : return 값을 -1로 정의 할 여지를 고민해야함
 }
 
 // Changes the next byte to be rtead or written in open file fd to position.
@@ -346,7 +322,6 @@ unsigned tell(int fd)
 	return value;
 }
 
-// 해당하는 파일 디스크립터를 닫습니다.
 void close(int fd)
 {
 	if(fd > 64) exit(-1);

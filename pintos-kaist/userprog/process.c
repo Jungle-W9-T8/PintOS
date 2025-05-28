@@ -79,10 +79,14 @@ initd (void *f_name) {
 	struct initial_args *package = (struct initial_args*) f_name;
 
 	thread_current()->parent = package->parent;
-	list_push_back(&package->parent->children, &thread_current()->child_elem);
+	//list_push_back(&package->parent->children, &thread_current()->child_elem);
 	process_init ();
 	if (process_exec (package->fn_copy) < 0)
+	{
+		process_cleanup();
 		PANIC("Fail to launch initd\n");
+	}
+
 	
 	NOT_REACHED ();
 }
@@ -181,7 +185,7 @@ __do_fork (void *aux) {
 	}
 	current->next_fd = parent->next_fd;
 	current->parent = parent;
-	list_push_back(&parent->children, &current->child_elem);
+	//list_push_back(&parent->children, &current->child_elem);
 
 	sema_up(&current->parent->sema_load); 
 	process_init ();
@@ -227,12 +231,11 @@ process_exec (void *f_name) {
 	/* And then load the binary */
 	success = load (file_name, &_if);
 
-	/* 스택 포인터, karg->argc, karg->argv 가 이미 정의되어 있다고 가정 */
+	if (!success)
+	return -1;
+
 	char *argv_u[32];   /* argc 최대 32라 가정 */
 
-	/* 1) 문자열을 역순으로 스택에 복사하고, 복사한 위치(=유저 스택 어드레스)를 argv_u에 저장 */
-
-	// 페이지 경계에 맞닿는 상황을 제거해야한다. 그래서 rsp를 시작 전에 좀 더 내려서 시작하게끔 조정
 	_if.rsp -= 8;
 
 	for (int i = argc - 1; i >= 0; i--) {
@@ -242,14 +245,11 @@ process_exec (void *f_name) {
 		argv_u[i] = (char*)_if.rsp;            // 복사된 문자열의 주소 저장
 	}
 
-	/* 2) 스택 워드 정렬 (필요하다면) */
 	_if.rsp = (uintptr_t)_if.rsp & ~0xF;
 
-	/* 3) NULL sentinel */
 	_if.rsp -= sizeof(char*);
 	*(char**)_if.rsp = NULL;
 
-	/* 4) argv_u[]에 모아둔 주소를 스택에 푸시 */
 	for (int i = argc - 1; i >= 0; i--) {
 		_if.rsp -= sizeof(char*);
 		*(char**)_if.rsp = argv_u[i];
@@ -263,9 +263,6 @@ process_exec (void *f_name) {
 	_if.R.rdi = argc;
 
 	palloc_free_page (file_name);
-
-	if (!success)
-		return -1;
 
 	do_iret (&_if);
 	NOT_REACHED ();
@@ -287,7 +284,6 @@ int
 process_wait (tid_t child_tid) {
 	
 	// 세마포어 대신 임시방편 고의 지연
-	timer_msleep(500);
 	// 여기에서 적절한 대기를 시킬 수 있어야하는데,
 	struct thread *child = get_child_thread(child_tid);
 	
@@ -296,7 +292,7 @@ process_wait (tid_t child_tid) {
 		return -1;
 	}
 	sema_down (&child->sema_wait);
-	//list_remove(&child->child_elem);
+	list_remove(&child->child_elem);
    sema_up(&child->sema_exit);
    	return child->exit_status;
 }
@@ -305,12 +301,13 @@ process_wait (tid_t child_tid) {
 void
 process_exit (void) {
 	struct thread *curr = thread_current ();
-	for (int i = 2; i < 64; i++) {
+	for (int i = 3; i < 64; i++) {
 		//if(curr->fd_table[i] != NULL) close(i);
 	}
 
 	//palloc_free_page(curr->fd_table);
 	file_close(curr->running);
+
 	process_cleanup ();
 	sema_up(&curr->sema_wait);
 	sema_down(&curr->sema_exit); 
@@ -519,7 +516,6 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 
 	if_->rip = ehdr.e_entry;
-
 	success = true;
 
 done:
