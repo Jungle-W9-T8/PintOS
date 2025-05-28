@@ -31,6 +31,7 @@ static void __do_fork (void *);
 static void
 process_init (void) {
 	struct thread *current = thread_current ();
+	sema_init(&current->sema_load, 0);
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
@@ -79,9 +80,16 @@ initd (void *f_name) {
 	struct initial_args *package = (struct initial_args*) f_name;
 
 	thread_current()->parent = package->parent;
-	list_push_back(&package->parent->children, &thread_current()->child_elem);
+	// list_push_back(&package->parent->children, &thread_current()->child_elem);
 	process_init ();
 	if (process_exec (package->fn_copy) < 0)
+		for (int i = 3; i < 64; i++) {
+			struct file *file = thread_current()->fd_table[i];
+			if (file != NULL) {
+				close(i);
+				file = NULL;
+			}
+		}
 		PANIC("Fail to launch initd\n");
 	
 	NOT_REACHED ();
@@ -181,7 +189,7 @@ __do_fork (void *aux) {
 	}
 	current->next_fd = parent->next_fd;
 	current->parent = parent;
-	list_push_back(&parent->children, &current->child_elem);
+	// list_push_back(&parent->children, &current->child_elem);
 
 	sema_up(&current->parent->sema_load); 
 	process_init ();
@@ -287,7 +295,7 @@ int
 process_wait (tid_t child_tid) {
 	
 	// 세마포어 대신 임시방편 고의 지연
-	timer_msleep(500);
+	timer_msleep(100);
 	// 여기에서 적절한 대기를 시킬 수 있어야하는데,
 	struct thread *child = get_child_thread(child_tid);
 	
@@ -296,24 +304,31 @@ process_wait (tid_t child_tid) {
 		return -1;
 	}
 	sema_down (&child->sema_wait);
-	//list_remove(&child->child_elem);
-   sema_up(&child->sema_exit);
-   	return child->exit_status;
+	int status = child->exit_status;
+	list_remove(&child->child_elem);
+    sema_up(&child->sema_exit);
+	if (status < 0)
+		return -1;
+   	return status;
 }
 /* Exit the process. This function is called by thread_exit (). */
 
 void
 process_exit (void) {
 	struct thread *curr = thread_current ();
-	for (int i = 2; i < 64; i++) {
-		//if(curr->fd_table[i] != NULL) close(i);
+	for (int i = 3; i < 64; i++) {
+		struct file *file = curr->fd_table[i];
+		if (file != NULL) {
+			close(i);
+			file = NULL;
+		}
 	}
 
-	//palloc_free_page(curr->fd_table);
 	file_close(curr->running);
 	process_cleanup ();
 	sema_up(&curr->sema_wait);
 	sema_down(&curr->sema_exit); 
+	printf("process_exit ok\n");
 }
 
 /* Free the current process's resources. */

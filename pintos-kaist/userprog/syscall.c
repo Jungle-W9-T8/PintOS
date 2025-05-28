@@ -247,15 +247,13 @@ int open(const char *file)
 
 	if(targetFile == NULL) return -1;
 
-	int i = curr->next_fd;
-	curr->fd_table[i] = targetFile;
-	curr->next_fd += 1;
-
-
-
-	// 생각해보니.. fd를 64개 다쓰면? 그리고, 재활용가능한 fd가 있다면?
-	// 연결된 번호를 반환하도록 하기
-	return i;
+	int curr_fd;
+	while (curr_fd < 64 && curr->fd_table[curr->next_fd]) {
+		int curr_fd = curr->next_fd;
+		curr->fd_table[curr_fd] = targetFile;
+		curr->next_fd += 1;
+	}
+	return curr_fd;
 }
 
 
@@ -355,6 +353,5 @@ void close(int fd)
 	lock_acquire(&filesys_lock);
 	file_close(closeTarget);
 	lock_release(&filesys_lock);
-
 }
 

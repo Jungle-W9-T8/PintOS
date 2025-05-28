@@ -236,7 +236,7 @@ thread_create (const char *name, int priority,
 	if(t->priority > thread_current()->priority)
 		thread_yield();
 
-	//list_push_back(&thread_current()->children, &t->child_elem);
+	list_push_back(&thread_current()->children, &t->child_elem);
 
 	return tid;								// 생성된 스레드의 ID 반환
 }
@@ -738,7 +738,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	/* Semaphore */
 	sema_init(&t->sema_wait, 0);
 	sema_init(&t->sema_exit, 0);
-	sema_init(&t->sema_load, 0);
+	// sema_init(&t->sema_load, 0);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
