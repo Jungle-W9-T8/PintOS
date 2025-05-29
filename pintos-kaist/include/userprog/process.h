@@ -12,6 +12,8 @@ struct initial_args
 tid_t process_create_initd (const char *file_name);
 tid_t process_fork (const char *name, struct intr_frame *if_);
 int process_exec (void *f_name);
+struct file *process_get_file(int fd);
+int process_add_file(struct file *file);
 
 void processOff();
 int process_wait (tid_t);

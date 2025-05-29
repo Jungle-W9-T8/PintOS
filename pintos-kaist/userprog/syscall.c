@@ -179,9 +179,7 @@ void exit(int status)
 */
 tid_t fork (const char *thread_name)
 {
-	tid_t returnTarget = process_fork(thread_name, &thread_current()->backup_if);
-	if(returnTarget == TID_ERROR) exit(-1);
-	return returnTarget;
+	return process_fork(thread_name, &thread_current()->backup_if);
 }
 
 
@@ -191,8 +189,7 @@ int exec(const char *cmd_line)
 	if (pml4_get_page(thread_current()->pml4, cmd_line) == NULL) exit(-1);
 	
 
-	char *package_cmd;
-	package_cmd = palloc_get_page(PAL_ZERO);
+	char *package_cmd = palloc_get_page(PAL_ZERO);
 	if (package_cmd == NULL) exit(-1);
 	strlcpy(package_cmd, cmd_line, PGSIZE);
 
@@ -202,9 +199,7 @@ int exec(const char *cmd_line)
 
 
 int wait (tid_t pid) {
-	tid_t exitNum = process_wait(pid);
-	//	if(exitNum == -1) printf("returned -1!\n");
-	return exitNum;
+	return process_wait(pid);
 }
 
 bool create(const char *file, unsigned initial_size)
@@ -248,10 +243,10 @@ int open(const char *file)
 	if(targetFile == NULL) return -1;
 
 	int curr_fd;
-	while (curr_fd < 64 && curr->fd_table[curr->next_fd]) {
-		int curr_fd = curr->next_fd;
-		curr->fd_table[curr_fd] = targetFile;
-		curr->next_fd += 1;
+	while (curr_fd < 64 && curr->FDT[curr->next_FD]) {
+		int curr_fd = curr->next_FD;
+		curr->FDT[curr_fd] = targetFile;
+		curr->next_FD += 1;
 	}
 	return curr_fd;
 }
@@ -260,7 +255,8 @@ int open(const char *file)
 // 파일 크기를 확인한다.
 int filesize(int fd)
 {
-	struct file *targetView = thread_current()->fd_table[fd];
+	
+	struct file *targetView = process_get_file(fd);
 	if(targetView == NULL) exit(-1);
 	lock_acquire(&filesys_lock);
 	off_t fileSize = file_length(targetView);
@@ -286,7 +282,7 @@ int read(int fd, void *buffer, unsigned size)
 	else
 	{
 		lock_acquire(&filesys_lock);
-		off_t inputData = file_read(thread_current()->fd_table[fd], buffer, size);
+		off_t inputData = file_read(thread_current()->FDT[fd], buffer, size);
 		lock_release(&filesys_lock);
 		return inputData;
 	}
@@ -312,7 +308,7 @@ int write(int fd, const void *buffer, unsigned size)
 	else
 	{
 		// fd는 open 후 값을 그대로 끌어온다고 가정. 즉, fd는 바로 해당 파일을 가리킨다.
-		struct file *targetWrite = thread_current()->fd_table[fd];
+		struct file *targetWrite = thread_current()->FDT[fd];
 		if(targetWrite == NULL) exit(-1);
 		lock_acquire(&filesys_lock);
 		int writed = file_write(targetWrite, buffer, size);
@@ -326,7 +322,7 @@ int write(int fd, const void *buffer, unsigned size)
 // Changes the next byte to be rtead or written in open file fd to position.
 void seek(int fd, unsigned position)
 {
-	struct file *targetSeek = thread_current()->fd_table[fd];
+	struct file *targetSeek = thread_current()->FDT[fd];
 	if(targetSeek == NULL) exit(-1);
 	lock_acquire(&filesys_lock);
 	file_seek(targetSeek, position);
@@ -336,7 +332,7 @@ void seek(int fd, unsigned position)
 // Return the position of the next byte to be read or written in open file fd.
 unsigned tell(int fd)
 {
-	struct file *targetTell = thread_current()->fd_table[fd];
+	struct file *targetTell = thread_current()->FDT[fd];
 	if(targetTell == NULL) exit(-1);
 	lock_acquire(&filesys_lock);
 	off_t value = file_tell(targetTell);
@@ -348,7 +344,7 @@ unsigned tell(int fd)
 void close(int fd)
 {
 	if(fd > 64) exit(-1);
-	struct file *closeTarget = thread_current()->fd_table[fd];
+	struct file *closeTarget = thread_current()->FDT[fd];
 	if (!is_user_vaddr(closeTarget)) return;
 	lock_acquire(&filesys_lock);
 	file_close(closeTarget);

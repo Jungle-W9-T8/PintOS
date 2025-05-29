@@ -221,22 +221,17 @@ thread_create (const char *name, int priority,
 	struct file *stdout;
 	struct file *stderr;
 
-	t->fd_table[0] = stdin;
-	t->fd_table[1] = stdout;
-	t->fd_table[2] = stderr;
-	t->next_fd = 3;
 
-	t->parent = NULL;
-	list_init(&t->siblingThread);
 
 	// 스레드를 READY 상태로 전환하고 ready_list에 삽입하기
 	thread_unblock (t);
-	
+
+	t->parent = thread_current();
+	list_push_back(&thread_current()->children, &t->child_elem);
 	/** project1-Priority Scheduling */
 	if(t->priority > thread_current()->priority)
 		thread_yield();
 
-	list_push_back(&thread_current()->children, &t->child_elem);
 
 	return tid;								// 생성된 스레드의 ID 반환
 }
@@ -727,18 +722,14 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->base_priority = priority;
 	list_init(&t->donations);
 
-	/* File Desciptor Table 초기화 */ // 이런 초기화는 영..
-	memset (t->fd_table, 0, sizeof t->fd_table);
-	t->next_fd = 3;
-
 	/* Relations */
 	t->parent = NULL;
 	list_init(&t->children);
 
 	/* Semaphore */
-	sema_init(&t->sema_wait, 0);
-	sema_init(&t->sema_exit, 0);
-	// sema_init(&t->sema_load, 0);
+	sema_init(&t->wait_sema, 0);
+	sema_init(&t->exit_sema, 0);
+	sema_init(&t->fork_sema, 0);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
