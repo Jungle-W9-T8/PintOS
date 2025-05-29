@@ -11,6 +11,9 @@
 #include "vm/vm.h"
 #endif
 
+#define FDT_PAGES 1						
+#define MAX_FD (FDT_PAGES * (1 << 9))
+
 
 /* States in a thread's life cycle. */
 enum thread_status {
@@ -101,23 +104,39 @@ struct thread {
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+	struct list_elem sema_elem;           
 	struct list_elem d_elem;            /* Donations List element. */
 
-	struct file *fd_table[64];
-	struct thread *parentThread;
-	struct list siblingThread;
-	struct list_elem childThread;
-	int next_fd;
+	struct file *running;
 	
-	struct semaphore threadSema;
+	/* relations */
+	int exit_status;
+	struct thread *parent;
+	struct intr_frame backup_if;
+	struct list children;
+	struct list_elem child_elem;
+
+	/* semaphore */
+	struct semaphore wait_sema;
+	struct semaphore exit_sema;
+	struct semaphore fork_sema;
+
+	/* Page map level 4 */
+	uint64_t *pml4;         
+	struct file **FDT;				// File Descriptor Table
+	int next_FD;					// 다음 사용 가능한 fd값
+	struct file *running_file;		// 현재 프로세스에서 실행 중인 파일
+   
+
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
-	uint64_t *pml4;                     /* Page map level 4 */
 	// struct thread *parentThread;
+	// uint64_t *pml4;                     /* Page map level 4 */
+
 	// struct list siblingThread;
 	// struct list_elem childThread;
-	// struct file file_fdt[64];
+	// struct file fd_table[64];
 	// int next_fd;
 	// 초기화 구문 필요
 #endif

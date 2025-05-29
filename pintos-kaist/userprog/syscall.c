@@ -7,14 +7,19 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "threads/vaddr.h"
 
 #include "threads/init.h"
+#include "userprog/process.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "userprog/process.h"
+#include "threads/palloc.h"
+#include <string.h>
 
 void syscall_entry (void);
-void syscall_handler (struct intr_frame *);
+void syscall_handler (struct intr_frame *f);
+bool is_valid_user_pointer(const void *uaddr);
 
 /* System call.
  *
@@ -40,6 +45,8 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+		
+	lock_init (&filesys_lock);
 }
 
 /* The main system call interface */
@@ -56,16 +63,30 @@ syscall_handler (struct intr_frame *f) {
 	case SYS_FORK:
 		if(f->R.rdi != NULL)
 		{
-			f->R.rax = fork(f->R.rdi);
+			if(is_user_vaddr(f->R.rdi))
+			{
+				memcpy(&thread_current()->backup_if, f, sizeof(struct intr_frame));
+				f->R.rax = fork(f->R.rdi);
+			}
 		}
 		else
 			exit(-1);
 		break;
 	case SYS_EXEC:
-		printf("exec has called!\n\n");
+		if(f->R.rdi != NULL)
+		{
+			f->R.rax = exec(f->R.rdi);
+		}
+		else
+			exit(-1);
 		break;
 	case SYS_WAIT:
-		printf("wait has called!\n\n");
+		if(f->R.rdi != NULL)
+		{
+			f->R.rax = wait(f->R.rdi);
+		}
+		else
+			exit(-1);
 		break;
 	case SYS_CREATE:
 		 if(f->R.rdi != NULL)
@@ -144,78 +165,41 @@ void halt(void)
 
 void exit(int status)
 {
-	struct thread *curr = thread_current();
-	printf("%s: exit(%d)\n", curr->name, status);
-	thread_exit();
+    struct thread *curr = thread_current();
+    curr->exit_status = status;
+	printf("%s: exit(%d)\n", curr->name, curr->exit_status);
+    thread_exit();
 }
 
+/*
+1. 유저 영역에 있을 때의 intr_frame을 전달하기 위해 fork 되자마자 inrt_frame 복제 후 저장
+2. 자식 스레드 생성
+3. 자식의 load()가 끝날 때까지 대기
+4. 자식의 스레드 아이디 반환
+*/
 tid_t fork (const char *thread_name)
 {
-	// 현재 프로세스의 전체 상태를 그대로 복제하여 새로운 자식 프로세스를 만든다.
-	// 부모와 자식은 완전히 독립되지만, 초기 상태(메모리, 파일, 레지스터)는 동일하다.
-
-	// 현재 내용은 복제 자체를 수행하고 있진 않음. 그냥 가져다 대는 수준..
-	struct thread *curr = thread_current();
-	tid_t newThread = 0;
-	newThread = process_fork(thread_name, &curr->tf);
-	// 마지막 컴파일 성공 코드 : tid_t newThread = thread_create(thread_name, PRI_DEFAULT, process_fork, curr);
-	
-	while(newThread == 0) {}
-
-	if(newThread < 0)
-		return TID_ERROR; 
-	return newThread;
+	return process_fork(thread_name, &thread_current()->backup_if);
 }
+
 
 int exec(const char *cmd_line)
 { 
 	if(cmd_line == NULL) exit(-1);
-	char *args[32] = {NULL};
-	char *token, *saveptr;
-	int argc = 0;
+	if (pml4_get_page(thread_current()->pml4, cmd_line) == NULL) exit(-1);
+	
 
-	for(token = strtok_r(cmd_line, " \t\r\n", &saveptr); token && argc < 31; token = strtok_r(NULL, " \t\r\n", &saveptr))
-	{
-		args[argc] = token;
-		argc++;
-	}
+	char *package_cmd = palloc_get_page(PAL_ZERO);
+	if (package_cmd == NULL) exit(-1);
+	strlcpy(package_cmd, cmd_line, PGSIZE);
 
-	char *realArgs = args[1];
-	thread_func *commandLine = args[0];
-	struct thread *curr = thread_current();
-
-	// 호불호 : 여긴 시스템 콜이라 이 Thread blocked가 수행되어도 ㄱㅊ.
-	curr->status = THREAD_BLOCKED;
-	// t->tf.R.rdi = (uint64_t) function;      // 첫 번째 인자로 실행할 함수 전달
-	palloc_free_page(curr->tf.R.rdi);
-	palloc_free_page(curr->tf.R.rsi);
-	curr->tf.R.rdi = (uint64_t) commandLine;
-	curr->tf.R.rsi = (uint64_t) realArgs;
-
-	thread_unblock(curr);
-	// TODO :	
-	// Wait for termination of child process whose process id is pid
+	int result = process_exec(package_cmd);
+	if (result == -1) return result;
 }
 
-int wait(tid_t pid)
-{
-	// 이거 sema 써야함 wait , fork 단위의 sema 사용할 것
-	/*
-	지정된 자식 프로세스가 종료될 때까지 기다리고, 종료 코드를 수거한다.
-wait하지 않으면 exit status가 유실되며, wait는 한 번만 가능하다.*/
-	// TODO :
-	// wait for a child process pid to exit and retrieve the child's exit status.
-	// IF : PID is alive
-		// wait till it terminates.
-		// Return the status that pid passed to exit.
-	// IF : PID did not call exit but was terminated by the kernel, return -1
-	// A parent process cna call wait for the cild process that has terminated
-		// - return exit status of the terminated child processes.
 
-	// After the child terminates, the parent should deallocatge its process descriptor
-		// wait fails and return -1 if
-			// pid does not refer to a direct child of the calling process.
-			// the process that calls wait has already called wait on pid.
+int wait (tid_t pid) {
+	return process_wait(pid);
 }
 
 bool create(const char *file, unsigned initial_size)
@@ -223,7 +207,10 @@ bool create(const char *file, unsigned initial_size)
 	if (pml4_get_page(thread_current()->pml4, file) == NULL) exit(-1);
 	if(strlen(file) == 0) exit(-1);
 	if(strlen(file) > 128) return false; // create-long 테스트 케이스 대비
-	return filesys_create(file, initial_size);
+	lock_acquire(&filesys_lock);
+	bool isCreated = filesys_create(file, initial_size);
+	lock_release(&filesys_lock);
+	return isCreated;
 }
 
 bool remove(const char *file)
@@ -231,7 +218,17 @@ bool remove(const char *file)
 	if (pml4_get_page(thread_current()->pml4, file) == NULL) exit(-1);
 	if(strlen(file) == 0) exit(-1);
 	if(strlen(file) > 128) return false;
-	return filesys_remove(file);
+	lock_acquire(&filesys_lock);
+	bool isRemoved = filesys_remove(file);
+	lock_release(&filesys_lock);
+	return isRemoved;
+}
+bool starts_with(const char *str, const char *prefix) {
+    while (*prefix) {
+        if (*prefix != *str) return false;
+        prefix++; str++;
+    }
+    return true;
 }
 
 int open(const char *file)
@@ -239,25 +236,31 @@ int open(const char *file)
 	if (pml4_get_page(thread_current()->pml4, file) == NULL) exit(-1);
 	
 	struct thread *curr = thread_current();
+	lock_acquire(&filesys_lock);
 	struct file *targetFile = filesys_open(file);
+	lock_release(&filesys_lock);
+
 	if(targetFile == NULL) return -1;
 
-	int i = curr->next_fd;
-	curr->fd_table[i] = targetFile;
-	curr->next_fd += 1;
-
-	// 생각해보니.. fd를 64개 다쓰면? 그리고, 재활용가능한 fd가 있다면?
-	// 연결된 번호를 반환하도록 하기
-	return i;
+	int curr_fd;
+	while (curr_fd < 64 && curr->FDT[curr->next_FD]) {
+		int curr_fd = curr->next_FD;
+		curr->FDT[curr_fd] = targetFile;
+		curr->next_FD += 1;
+	}
+	return curr_fd;
 }
 
 
 // 파일 크기를 확인한다.
 int filesize(int fd)
 {
-	struct file *targetView = thread_current()->fd_table[fd];
+	
+	struct file *targetView = process_get_file(fd);
 	if(targetView == NULL) exit(-1);
+	lock_acquire(&filesys_lock);
 	off_t fileSize = file_length(targetView);
+	lock_release(&filesys_lock);
 	if(fileSize == 0) return -1;
 	return fileSize;
 }
@@ -266,6 +269,9 @@ int filesize(int fd)
 // 키보드 입력을 받거나 파일에서 내용을 가져온다.
 int read(int fd, void *buffer, unsigned size)
 {
+	if(fd >= 64 || fd == 1 || fd == 2) exit(-1);
+	if ((buffer == NULL) || !(pml4_get_page(thread_current()->pml4, buffer))) exit(-1);
+
 	if(!is_user_vaddr(buffer)) exit(-1); // write-bad-ptr 구현
 
 	if(fd == 0)
@@ -275,8 +281,9 @@ int read(int fd, void *buffer, unsigned size)
 	}
 	else
 	{
-		if(fd >= 64 || fd == 1 || fd == 2) exit(-1);
-		off_t inputData = file_read(thread_current()->fd_table[fd], buffer, size);
+		lock_acquire(&filesys_lock);
+		off_t inputData = file_read(thread_current()->FDT[fd], buffer, size);
+		lock_release(&filesys_lock);
 		return inputData;
 	}
 
@@ -287,40 +294,49 @@ int read(int fd, void *buffer, unsigned size)
 // 콘솔 출력을 수행하거나 파일에 직접 작성한다.
 int write(int fd, const void *buffer, unsigned size)
 {
+	if ((buffer == NULL) || !(pml4_get_page(thread_current()->pml4, buffer))) exit(-1);
+
 	if(fd == 0) exit(-1);
 	if(fd >= 64) exit(-1);
-	if(!is_user_vaddr(buffer)) exit(-1); // write-bad-ptr 구현
 
 	if(fd == 1)
 	{
 		putbuf(buffer, size);
+		return size;
+
 	}
 	else
 	{
 		// fd는 open 후 값을 그대로 끌어온다고 가정. 즉, fd는 바로 해당 파일을 가리킨다.
-		struct file *targetWrite = thread_current()->fd_table[fd];
+		struct file *targetWrite = thread_current()->FDT[fd];
 		if(targetWrite == NULL) exit(-1);
+		lock_acquire(&filesys_lock);
 		int writed = file_write(targetWrite, buffer, size);
+		lock_release(&filesys_lock);
+
+		return writed;
 	}
 	// TODO : return 값을 -1로 정의 할 여지를 고민해야함
-	return size;
 }
 
 // Changes the next byte to be rtead or written in open file fd to position.
 void seek(int fd, unsigned position)
 {
-	struct file *targetSeek = thread_current()->fd_table[fd];
+	struct file *targetSeek = thread_current()->FDT[fd];
 	if(targetSeek == NULL) exit(-1);
-
+	lock_acquire(&filesys_lock);
 	file_seek(targetSeek, position);
+	lock_release(&filesys_lock);
 }
 
 // Return the position of the next byte to be read or written in open file fd.
 unsigned tell(int fd)
 {
-	struct file *targetTell = thread_current()->fd_table[fd];
+	struct file *targetTell = thread_current()->FDT[fd];
 	if(targetTell == NULL) exit(-1);
+	lock_acquire(&filesys_lock);
 	off_t value = file_tell(targetTell);
+	lock_release(&filesys_lock);
 	return value;
 }
 
@@ -328,8 +344,10 @@ unsigned tell(int fd)
 void close(int fd)
 {
 	if(fd > 64) exit(-1);
-	struct file *closeTarget = thread_current()->fd_table[fd];
+	struct file *closeTarget = thread_current()->FDT[fd];
 	if (!is_user_vaddr(closeTarget)) return;
+	lock_acquire(&filesys_lock);
 	file_close(closeTarget);
+	lock_release(&filesys_lock);
 }
 

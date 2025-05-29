@@ -221,22 +221,17 @@ thread_create (const char *name, int priority,
 	struct file *stdout;
 	struct file *stderr;
 
-	t->fd_table[0] = stdin;
-	t->fd_table[1] = stdout;
-	t->fd_table[2] = stderr;
-	t->next_fd = 3;
 
-
-	// userprog 확장을 위한 추가된 쓰레드 멤버변수 초기화 과정
-	t->parentThread = NULL;
-	list_init(&t->siblingThread);
 
 	// 스레드를 READY 상태로 전환하고 ready_list에 삽입하기
 	thread_unblock (t);
-	
+
+	t->parent = thread_current();
+	list_push_back(&thread_current()->children, &t->child_elem);
 	/** project1-Priority Scheduling */
 	if(t->priority > thread_current()->priority)
 		thread_yield();
+
 
 	return tid;								// 생성된 스레드의 ID 반환
 }
@@ -280,7 +275,6 @@ thread_sleep (int64_t wakeup_tick)
     // if (list_contains(&sleep_list, &cur->elem))
     // 	list_remove(&cur->elem); // 포함되었다면 제거
 }
-
 
 static bool 
 cmp_wakeup_tick(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
@@ -494,25 +488,32 @@ thread_tid (void) {
 void
 thread_exit (void) {
 	ASSERT (!intr_context ());
-
 #ifdef USERPROG
-	processOff();
-	struct thread *curr = thread_current();
-	for(int i = 0; i < 64; i++)
-	{
-		// free?
-		// 여기서하는거 아니고 close 해야하는거 아니야?
-		curr->fd_table[i] = NULL;
-	}
-
 	process_exit ();
 #endif
+
+	// TO DO : 부모자식 연결 끊고 제거
+	struct thread *curr = thread_current();
+	struct list_elem *e;
+ 	 for (e = list_begin (&curr->parent->children); e != list_end (&curr->parent->children); e = list_next (e)) {
+ 	 	struct thread *result = list_entry (e, struct thread, child_elem);
+ 	 	if (result->tid == curr->tid)
+	 	{
+	 		list_remove(&result->child_elem);
+	 		break;
+	 	}
+ 	 }
+	 // 부모 자식 관계 끊어주기
+	 curr->parent = NULL;
+	 //
+
 
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
+
 }
 
 /*************************************************************
@@ -721,10 +722,14 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->base_priority = priority;
 	list_init(&t->donations);
 
-	t->threadSema.value = 1;
-	list_init(&t->threadSema.waiters);
+	/* Relations */
+	t->parent = NULL;
+	list_init(&t->children);
 
-	
+	/* Semaphore */
+	sema_init(&t->wait_sema, 0);
+	sema_init(&t->exit_sema, 0);
+	sema_init(&t->fork_sema, 0);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
